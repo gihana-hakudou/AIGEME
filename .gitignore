@@ -70,4 +70,6 @@ config/
 # GitHub templates
 .github/
 venv/
-.AIGEME/.browser/
+
+proj_data.json
+.git-rewrite/
