@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AIGEME — 你的 AI 搭子</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: 'Noto Sans SC', -apple-system, sans-serif;
+    background: #fff5f7;
+    color: #1a1a2e;
+    line-height: 1.6;
+    overflow-x: hidden;
+  }
+  img { width: 100%; display: block; }
+  .full-img { margin:0; padding:0; width:100%; }
+  
+  /* ── Sections ── */
+  .section {
+    position: relative;
+    width: 100%;
+  }
+  .content-block {
+    max-width: 480px;
+    margin: 0 auto;
+    padding: 48px 24px;
+    text-align: center;
+  }
+  .content-block h2 {
+    font-size: 28px;
+    font-weight: 900;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
+    background: linear-gradient(135deg, #ec4899, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .content-block p {
+    font-size: 15px;
+    color: #6b7280;
+    line-height: 1.8;
+  }
+  .content-block .emoji-big {
+    font-size: 52px;
+    display: block;
+    margin-bottom: 16px;
+  }
+
+  /* ── Hero ── */
+  .hero {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 40px 24px;
+    background:
+      radial-gradient(ellipse at 30% 40%, rgba(236,72,153,0.10), transparent 60%),
+      radial-gradient(ellipse at 70% 60%, rgba(168,85,247,0.08), transparent 60%),
+      linear-gradient(180deg, #fff5f7 0%, #fff 100%);
+  }
+  .hero .logo {
+    font-size: 72px;
+    margin-bottom: 12px;
+    filter: drop-shadow(0 4px 16px rgba(236,72,153,0.2));
+    animation: float 3s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%,100% { transform: translateY(0); }
+    50% { transform: translateY(-10px); }
+  }
+  .hero h1 {
+    font-size: clamp(44px, 10vw, 72px);
+    font-weight: 900;
+    letter-spacing: -1px;
+    background: linear-gradient(135deg, #ec4899, #a855f7);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    line-height: 1.1;
+    margin-bottom: 8px;
+  }
+  .hero .sub {
+    font-size: 18px;
+    color: #9ca3af;
+    font-weight: 300;
+    margin-top: 4px;
+  }
+  .hero .tagline {
+    font-size: 15px;
+    color: #6b7280;
+    margin-top: 24px;
+    max-width: 340px;
+    line-height: 1.7;
+  }
+
+  /* ── Screenshot Full ── */
+  .screenshot-wrap {
+    width: 100%;
+    background: #fff;
+    box-shadow: 0 4px 20px rgba(236,72,153,0.06);
+  }
+  .screenshot-wrap img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* ── Feature bubbles ── */
+  .feature-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 0 20px;
+    max-width: 420px;
+    margin: 0 auto;
+  }
+  .feature-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    background: rgba(255,255,255,0.85);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    padding: 18px 20px;
+    border: 1px solid rgba(236,72,153,0.08);
+    box-shadow: 0 2px 12px rgba(236,72,153,0.06);
+  }
+  .feature-item .fi-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    background: #fce7f3;
+  }
+  .feature-item .fi-text {
+    text-align: left;
+  }
+  .feature-item .fi-text h4 {
+    font-size: 15px;
+    font-weight: 700;
+    margin-bottom: 2px;
+  }
+  .feature-item .fi-text p {
+    font-size: 13px;
+    color: #6b7280;
+  }
+
+  /* ── CTA ── */
+  .cta-section {
+    padding: 60px 24px 80px;
+    text-align: center;
+    background: linear-gradient(180deg, #fff, #fff5f7);
+  }
+  .cta-section h2 {
+    font-size: 26px;
+    font-weight: 900;
+    margin-bottom: 8px;
+  }
+  .cta-section p {
+    color: #6b7280;
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+  .cta-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px 40px;
+    border-radius: 999px;
+    font-weight: 700;
+    font-size: 16px;
+    border: none;
+    background: linear-gradient(135deg, #ec4899, #a855f7);
+    color: #fff;
+    box-shadow: 0 4px 20px rgba(236,72,153,0.3);
+    cursor: default;
+  }
+  .cta-outline {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 32px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 14px;
+    border: 1px solid rgba(236,72,153,0.2);
+    background: rgba(255,255,255,0.8);
+    color: #6b7280;
+    margin-top: 12px;
+    cursor: default;
+  }
+
+  footer {
+    text-align: center;
+    padding: 24px;
+    color: #d1d5db;
+    font-size: 12px;
+  }
+
+  .scroll-hint {
+    position: absolute;
+    bottom: 32px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: #d1d5db;
+    font-size: 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    animation: bounce 2s infinite;
+  }
+  @keyframes bounce {
+    0%,100% { transform: translateX(-50%) translateY(0); }
+    50% { transform: translateX(-50%) translateY(8px); }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════ HERO ═══════════ -->
+<div class="hero" style="position:relative;">
+  <div class="logo">🎀</div>
+  <h1>AIGEME</h1>
+  <div class="sub">你的 AI 搭子</div>
+  <p class="tagline">
+    不是冷冰冰的聊天框，而是有脸蛋、有情绪、<br>会独立思考的 AI 伙伴
+  </p>
+  <div class="scroll-hint">
+    <span>往下滑，看看它长什么样</span>
+    <span style="font-size:20px;">↓</span>
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN 1: 启动界面 ═══════════ -->
+<div class="screenshot-wrap">
+  <img src="images/screen1_title.png" alt="AIGEME 启动界面" loading="lazy">
+</div>
+
+<div class="section">
+  <div class="content-block">
+    <span class="emoji-big">🎮</span>
+    <h2>像是在打开一个游戏</h2>
+    <p>
+      没有枯燥的命令行，没有冰冷的终端。<br>
+      一打开，就是视觉小说的味道——<br>
+      选角色、聊故事，AI 不只是回答问题，<br>
+      它是会说话的角色。
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN 2: 设置界面 ═══════════ -->
+<div class="screenshot-wrap">
+  <img src="images/screen2_settings.png" alt="AIGEME 设置面板" loading="lazy">
+</div>
+
+<div class="section">
+  <div class="content-block">
+    <span class="emoji-big">🎛️</span>
+    <h2>随你怎么调</h2>
+    <p>
+      选你喜欢的模型、调温度、控制上下文大小<br>
+      想让它脑洞大开？温度拉高一点。<br>
+      想让它严谨回答？温度调低。
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════ SCREEN 3: 聊天界面 ═══════════ -->
+<div class="screenshot-wrap">
+  <img src="images/screen3_chat.png" alt="AIGEME 聊天界面" loading="lazy">
+</div>
+
+<div class="section">
+  <div class="content-block">
+    <span class="emoji-big">💬</span>
+    <h2>跟一个「人」聊天<br>而不是跟一个对话框</h2>
+    <p>
+      有立绘、有表情、有字幕式的对话流。<br>
+      AI 说话时你会看到它在"思考"的每一个字——<br>
+      就像看角色在屏幕上活过来。
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════ WHAT MAKES IT SPECIAL ═══════════ -->
+<div class="section" style="background:linear-gradient(180deg,#fff5f7,#fff);padding:40px 0;">
+  <div class="content-block">
+    <span class="emoji-big">🌟</span>
+    <h2>跟那些聊天 AI<br>有什么不一样？</h2>
+    <p>
+      不只是"你问我答"——<br>
+      AIGEME 会自己思考、自己规划、自己动手。
+    </p>
+  </div>
+
+  <div class="feature-grid">
+    <div class="feature-item">
+      <div class="fi-icon">🧠</div>
+      <div class="fi-text">
+        <h4>会思考，不是秒回</h4>
+        <p>每句话前它会先"想一想"，你能看到它的思考过程</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="fi-icon">🛠️</div>
+      <div class="fi-text">
+        <h4>能动手，不是光说</h4>
+        <p>读文档、查网页、写文件、跑代码——想到就做</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="fi-icon">🎭</div>
+      <div class="fi-text">
+        <h4>演谁像谁</h4>
+        <p>每个角色都有独立人格和记忆，换角色就像换个人</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="fi-icon">📖</div>
+      <div class="fi-text">
+        <h4>记住你说的话</h4>
+        <p>不是临场记忆，是真的会"记得你"——用双向笔记关联</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="fi-icon">🔌</div>
+      <div class="fi-text">
+        <h4>随便换个脑子</h4>
+        <p>兼容 OpenAI、Claude、本地模型，想用哪个用哪个</p>
+      </div>
+    </div>
+    <div class="feature-item">
+      <div class="fi-icon">🎀</div>
+      <div class="fi-text">
+        <h4>不只聊天，一起成长</h4>
+        <p>你用越多它越懂你，最后长成最适合你的样子</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ARIO ═══════════ -->
+<div class="section" style="background:linear-gradient(180deg,#fff5f7,#fdf2f8);padding:40px 0;">
+  <div class="content-block">
+    <span class="emoji-big">🤖</span>
+    <h2>内置引导助手 Ario</h2>
+    <p>
+      不知道怎么用？问 Ario。<br>
+      想加个角色、装个技能、改个设置——<br>
+      全都可以直接跟 Ario 说。<br><br>
+      它就是系统的管家，什么问题都能帮你搞定。
+    </p>
+  </div>
+</div>
+
+<!-- ═══════════ CTA ═══════════ -->
+<div class="cta-section">
+  <h2>现在试试</h2>
+  <p>
+    项目已打包好虚拟环境，不用装 Python，不用配环境。<br>
+    下载解压，一键启动。
+  </p>
+  <div class="cta-btn">🎀 下载即用</div>
+  <div class="cta-outline">📦 解压 → 双击 start.bat → 浏览器打开 127.0.0.1:8765</div>
+</div>
+
+<footer>
+  AIGEME — MIT License · built with ❤️ and 🎀
+</footer>
+
+</body>
+</html>

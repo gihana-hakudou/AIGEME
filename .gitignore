@@ -1,0 +1,74 @@
+# AIGEME 运行时数据
+.AIGEME/.data/
+.AIGEME/.skill/
+.AIGEME/mcp-servers/
+.AIGEME/plan_results/
+.AIGEME/local.yaml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+nul
+
+# Logs
+log/
+*.log
+
+# Temp files
+*.tmp
+*.temp
+
+# Browser daemon runtime
+core/character_data/browser/
+
+# Browser screenshots
+**/browser_ss_*.png
+
+# WorkBuddy
+.workbuddy/
+
+# AI-generated reports
+deliverables/
+
+# Test output
+tests/
+
+# Docs build
+docs/
+
+# Scripts output
+scripts/
+
+# Character dev
+character/wantao/
+
+# Character runtime data
+character_data/
+
+# Config overrides
+config/
+
+# GitHub templates
+.github/
+venv/
+.AIGEME/.browser/

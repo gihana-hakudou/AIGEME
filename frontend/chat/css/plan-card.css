@@ -1,0 +1,324 @@
+/* Plan Card 样式 — 配合 Galgame 暗色主题 */
+
+/* ── Plan Container（嵌入 ch-list 的容器）────────── */
+
+.plan-container {
+    margin: 4px 12px;
+}
+
+/* ── Plan Card 基础 ───────────────────────────────── */
+
+.plan-card {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    margin: 8px 0;
+    overflow: hidden;
+    transition: all 0.3s ease;
+}
+
+.plan-card:hover {
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.plan-card-header {
+    display: flex;
+    align-items: center;
+    padding: 10px 14px;
+    cursor: pointer;
+    user-select: none;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.plan-icon {
+    font-size: 16px;
+    margin-right: 8px;
+}
+
+.plan-title {
+    flex: 1;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.plan-toggle {
+    background: none;
+    border: none;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 12px;
+    transition: transform 0.2s;
+    padding: 4px;
+}
+
+.plan-toggle:hover {
+    color: #fff;
+}
+
+.plan-card.collapsed .plan-toggle {
+    transform: rotate(-90deg);
+}
+
+.plan-card.collapsed .plan-card-body {
+    max-height: 0;
+    padding: 0 14px;
+    overflow: hidden;
+}
+
+.plan-card-body {
+    max-height: 600px;
+    padding: 0 14px 14px;
+    overflow-y: auto;
+    transition: max-height 0.3s ease, padding 0.3s ease;
+}
+
+/* ── 计划目标 ─────────────────────────────────────── */
+
+.plan-goal {
+    color: #b0b0b0;
+    font-size: 13px;
+    margin-bottom: 12px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    line-height: 1.5;
+}
+
+.plan-strategy {
+    color: #999;
+    font-size: 12px;
+    margin-bottom: 12px;
+    font-style: italic;
+}
+
+/* ── 步骤列表 ─────────────────────────────────────── */
+
+.plan-steps {
+    margin-bottom: 12px;
+}
+
+.plan-step {
+    display: flex;
+    align-items: flex-start;
+    padding: 6px 0;
+    gap: 8px;
+    opacity: 0.6;
+    transition: opacity 0.3s;
+}
+
+.plan-step.active,
+.plan-step:has(.step-icon:is(:scope ✅)),
+.plan-step:has(.step-icon:is(:scope ❌)),
+.plan-step:has(.step-icon:is(:scope ⏭️)) {
+    opacity: 1;
+}
+
+.step-icon {
+    flex-shrink: 0;
+    width: 20px;
+    text-align: center;
+    font-size: 14px;
+}
+
+.step-title {
+    flex: 1;
+    color: #d0d0d0;
+    font-size: 13px;
+}
+
+.step-detail {
+    color: #888;
+    font-size: 12px;
+    margin-left: 28px;
+    margin-top: 2px;
+    display: none;
+    line-height: 1.4;
+}
+
+.plan-step.active .step-title {
+    color: #fff;
+    font-weight: 500;
+}
+
+/* 展开时显示详情 */
+.plan-card:not(.collapsed) .plan-step:hover .step-detail {
+    display: block;
+}
+
+/* ── 进度条 ───────────────────────────────────────── */
+
+.plan-progress-bar {
+    position: relative;
+    height: 20px;
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 10px;
+    margin-top: 10px;
+    overflow: hidden;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CAF50, #8BC34A);
+    border-radius: 10px;
+    transition: width 0.5s ease;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* ── 审核按钮 ─────────────────────────────────────── */
+
+.plan-review-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.plan-review-actions button {
+    flex: 1;
+    padding: 8px 12px;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.15s ease;
+    font-weight: 500;
+}
+
+.btn-approve {
+    background: rgba(76, 175, 80, 0.2);
+    color: #4CAF50;
+    border: 1px solid rgba(76, 175, 80, 0.3);
+}
+
+.btn-approve:hover {
+    background: rgba(76, 175, 80, 0.35);
+    border-color: rgba(76, 175, 80, 0.5);
+}
+
+.btn-reject {
+    background: rgba(244, 67, 54, 0.2);
+    color: #F44336;
+    border: 1px solid rgba(244, 67, 54, 0.3);
+}
+
+.btn-reject:hover {
+    background: rgba(244, 67, 54, 0.35);
+    border-color: rgba(244, 67, 54, 0.5);
+}
+
+.btn-modify {
+    background: rgba(33, 150, 243, 0.2);
+    color: #2196F3;
+    border: 1px solid rgba(33, 150, 243, 0.3);
+}
+
+.btn-modify:hover {
+    background: rgba(33, 150, 243, 0.35);
+    border-color: rgba(33, 150, 243, 0.5);
+}
+
+.plan-review-actions button:active {
+    transform: scale(0.95);
+}
+
+/* ── 停止执行按钮 ─────────────────────────────────── */
+
+.plan-stop-btn {
+    display: block;
+    width: 100%;
+    padding: 6px;
+    margin-top: 8px;
+    background: rgba(244, 67, 54, 0.1);
+    color: #F44336;
+    border: 1px solid rgba(244, 67, 54, 0.2);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.15s;
+}
+
+.plan-stop-btn:hover {
+    background: rgba(244, 67, 54, 0.2);
+    border-color: rgba(244, 67, 54, 0.4);
+}
+
+/* ── 规划中动画 ───────────────────────────────────── */
+
+.plan-thinking {
+    color: #888;
+    font-size: 13px;
+    font-style: italic;
+    padding: 8px 0;
+}
+
+.plan-thinking::after {
+    content: '';
+    animation: plan-dots 1.5s infinite;
+}
+
+@keyframes plan-dots {
+    0%, 20% { content: '.'; }
+    40% { content: '..'; }
+    60%, 100% { content: '...'; }
+}
+
+/* ── 依赖关系连线 ─────────────────────────────────── */
+
+.plan-dependency {
+    display: inline-block;
+    font-size: 10px;
+    color: #666;
+    margin-left: 4px;
+}
+
+/* ── 子任务详情面板 ───────────────────────────────── */
+
+.plan-subtask-detail {
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 2px solid rgba(255, 255, 255, 0.1);
+    margin-left: 20px;
+    padding: 8px;
+    margin-top: 4px;
+    font-size: 12px;
+    color: #999;
+    line-height: 1.5;
+}
+
+/* ── 统合报告区域 ─────────────────────────────────── */
+
+.plan-summary {
+    margin-top: 12px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    line-height: 1.6;
+    color: #d0d0d0;
+    font-size: 13px;
+}
+
+/* ── 响应式 ───────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .plan-card {
+        margin: 6px 0;
+        border-radius: 8px;
+    }
+
+    .plan-review-actions {
+        flex-direction: column;
+    }
+
+    .plan-review-actions button {
+        font-size: 12px;
+    }
+}

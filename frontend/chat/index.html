@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+<title>AIGEME</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@300;400;500;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/css/style.css">
+<link rel="stylesheet" href="/static/css/plan-card.css">
+</head>
+<body>
+<!-- 漂浮粒子背景 -->
+<canvas id="particles"></canvas>
+
+<!-- ══════════════ 标题屏幕 - 梦幻可爱风格 ══════════════ -->
+<div id="title-screen" class="screen active">
+  <div class="dreamy-bg"></div>
+  <div class="floating-hearts"></div>
+  <div class="title-content">
+    <div class="title-mascot">🎀</div>
+    <h1 class="title-logo">AIGEME</h1>
+    <p class="title-sub">与你相伴的 AI 伙伴</p>
+    <div class="title-btns">
+      <button class="cute-btn primary" data-go="screen-chat">
+        <span class="btn-icon">💬</span>
+        开始聊天
+        <div class="btn-sparkle"></div>
+      </button>
+      <button class="cute-btn" data-go="char-select">
+        <span class="btn-icon">🎭</span>
+        选择角色
+      </button>
+      <button class="cute-btn" data-go="screen-settings">
+        <span class="btn-icon">⚙️</span>
+        设置
+      </button>
+    </div>
+    <div class="title-tip">✨ 点击任意按钮开始冒险 ✨</div>
+  </div>
+</div>
+
+<!-- ══════════════ 角色选择 - 卡片风格 ══════════════ -->
+<div id="char-select" class="screen">
+  <div class="cloud-bg"></div>
+  <div class="page-head">
+    <button class="back-btn" data-go="title-screen">← 返回</button>
+    <h2>选择你的伙伴</h2>
+    <div class="char-count">已有 <span id="char-count-num">0</span> 位角色</div>
+  </div>
+  <div class="char-grid" id="char-grid"></div>
+</div>
+
+<!-- ══════════════ 主界面 ══════════════ -->
+<div id="screen-chat" class="screen">
+  <!-- 背景 -->
+  <div class="scene-bg" id="scene-bg">
+    <div class="sparkle-overlay"></div>
+    <img class="bg-img" id="bg-img" src="/static/img/bg.png" alt="背景" onerror="this.style.display='none'">
+  </div>
+
+  <!-- 立绘区域 -->
+  <div class="stage" id="stage">
+    <div class="sprite-wrap" id="sprite-wrap">
+      <div class="sprite-glow"></div>
+      <img class="sprite-img" id="sprite-img" alt="立绘" style="display:none;" onerror="this.style.display='none';document.getElementById('sprite-placeholder')&&(document.getElementById('sprite-placeholder').style.display='flex')">
+      <div class="sprite-placeholder" id="sprite-placeholder" style="display:none;">
+        <div class="placeholder-icon">🎭</div>
+        <div>等待连接...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 顶栏 -->
+  <header class="topbar">
+    <div class="tb-left">
+      <button class="tb-btn" data-go="title-screen" title="主页">🏠</button>
+      <button class="tb-btn" data-go="char-select" title="换角色">🎭</button>
+    </div>
+    <div class="tb-center">
+      <span id="tb-name" class="tb-name"></span>
+      <span class="tb-status" id="tb-status">● 在线</span>
+    </div>
+    <div class="tb-right">
+      <button class="tb-btn" id="btn-think" title="思考过程">💭</button>
+      <button class="tb-btn" id="btn-panel" title="面板">📋</button>
+      <button class="tb-btn" id="btn-mem" title="记忆">🧠</button>
+      <button class="tb-btn" data-go="screen-settings" title="设置">⚙️</button>
+    </div>
+  </header>
+
+  <!-- 思维链面板 - 可爱气泡风格 -->
+  <div class="think-panel" id="think-panel">
+    <div class="think-handle" id="think-handle">
+      <span class="think-icon">💭</span>
+      <span class="think-title" id="think-title">思考中...</span>
+      <button class="think-close" id="think-close">✕</button>
+    </div>
+    <div class="think-body" id="think-body">
+      <div class="think-content" id="think-content"></div>
+      <div id="thinking-panel" class="thinking-panel hidden" style="display:none !important;">
+        <div class="thinking-icon">💭</div>
+        <div id="thinking-text" class="thinking-text"></div>
+      </div>
+      <div class="tool-calls" id="tool-calls"></div>
+      <div id="tool-status" class="tool-status hidden" style="display:none !important;">
+        <span id="tool-icon">🛠️</span>
+        <span id="tool-text">正在执行...</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 对话区域 -->
+  <section class="chat-section">
+    <!-- 历史对话 -->
+    <div class="chat-history" id="chat-history">
+      <div class="ch-header">
+        <span>📜 历史对话记录</span>
+        <button class="ch-collapse" id="ch-collapse">收起 ↑</button>
+      </div>
+      <div class="ch-list" id="ch-list"></div>
+    </div>
+
+    <!-- 当前对话框 -->
+    <div class="chat-now">
+      <div class="chat-box" id="chat-box">
+        <div class="chat-speaker" id="chat-speaker"></div>
+        <div class="chat-text" id="chat-text"></div>
+        <div id="current-output" style="display:none;">
+          <div class="output-char-name" id="output-char-label"></div>
+          <div id="output-text" class="output-text"></div>
+        </div>
+        <div class="typing-indicator" id="typing-indicator" style="display:none;">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+
+      <!-- 展开/收起按钮 -->
+      <button class="expand-btn" id="expand-btn" title="展开历史记录">
+        <svg width="16" height="16" viewBox="0 0 24 24"><path d="M7 10l5 5 5-5" stroke="currentColor" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>
+      </button>
+
+      <!-- 输入区域 -->
+      <div class="chat-input">
+        <div class="input-wrap">
+          <textarea id="user-input" placeholder="说点什么吧..." rows="1"></textarea>
+          <input type="text" id="input-msg" style="display:none;">
+          <div id="image-preview" class="image-preview" style="display:none;"></div>
+          <button class="file-btn" id="file-btn" title="上传文件">
+            <svg width="18" height="18" viewBox="0 0 24 24"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
+          <input type="file" id="file-input" style="display:none;" accept="image/*" multiple>
+        </div>
+        <button class="send-btn" id="send-btn">
+          <svg class="icon-send" width="18" height="18" viewBox="0 0 24 24"><path d="M2 21l21-9L2 3v7l15 2-15 2v7z" fill="currentColor"/></svg>
+          <svg class="icon-stop" width="18" height="18" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+        </button>
+        <button id="stop-btn" style="display:none;">■ 停止</button>
+      </div>
+      <div class="chat-options">
+        <label class="opt"><input type="checkbox" checked> ✨ 流式输出</label>
+        <label class="opt"><input type="checkbox"> 🔊 语音</label>
+      </div>
+    </div>
+  </section>
+
+  <!-- 左面板 -->
+  <aside class="side-panel left" id="panel-left">
+    <div class="sp-head">
+      <span>📋 功能面板</span>
+      <button class="sp-close" data-close="panel-left">✕</button>
+    </div>
+    <div class="sp-tabs">
+      <button class="sp-tab active" data-tab="skills">⚡ 技能</button>
+      <button class="sp-tab" data-tab="workspace">📁 工作区</button>
+      <button class="sp-tab" data-tab="history">📝 历史</button>
+    </div>
+    <div class="sp-body">
+      <div class="sp-page active" data-tab="skills">
+        <div class="sk-list"></div>
+      </div>
+      <div class="sp-page" data-tab="workspace">
+        <div class="ft"></div>
+      </div>
+      <div class="sp-page" data-tab="history">
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- 右面板：记忆 -->
+  <aside class="side-panel right" id="panel-right">
+    <div class="sp-head">
+      <span>🧠 记忆库</span>
+      <button class="sp-close" data-close="panel-right">✕</button>
+    </div>
+    <div class="sp-body">
+      <div class="memo-list"></div>
+    </div>
+  </aside>
+</div>
+
+<!-- ══════════════ 设置 ══════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="page-head">
+    <button class="back-btn" data-go="title-screen">← 返回</button>
+    <h2>⚙️ 设置</h2>
+    <div></div>
+  </div>
+  <div class="settings-body">
+    <div class="sblock">
+      <h3>🎨 显示设置</h3>
+      <div class="srow"><label>透明度</label><input type="range" min="0" max="100" value="75"></div>
+      <div class="srow"><label>文字速度</label><input type="range" min="5" max="80" value="30" id="setting-speed"></div>
+    </div>
+    <div class="sblock">
+      <h3>🗣 语音设置</h3>
+      <div class="srow"><label>引擎</label><select class="sselect"><option>默认</option><option>Edge TTS</option><option>ElevenLabs</option></select></div>
+    </div>
+    <div class="sblock">
+      <h3>🤖 模型设置</h3>
+      <div class="srow model-pick-row">
+        <label>模型</label>
+        <div class="model-pick-wrap">
+          <select class="sselect setting-provider" id="setting-provider" title="选择服务商路由前缀"></select>
+          <input class="sinput setting-model-name" id="setting-model-name" placeholder="模型名称（如 gpt-4o-mini）" list="model-name-list" title="不含前缀的模型名">
+          <datalist id="model-name-list"></datalist>
+          <button type="button" class="cute-btn-sm" id="btn-fetch-models" title="从服务商拉取模型列表">📋 获取列表</button>
+        </div>
+        <span class="model-pick-hint" id="model-pick-hint"></span>
+      </div>
+      <div class="srow"><label>API Base</label><input class="sinput" id="setting-api-base" placeholder="https://api.openai.com"></div>
+      <div class="srow api-key-row">
+        <label>API Key</label>
+        <div class="api-key-wrap">
+          <input type="password" class="sinput" id="setting-api-key" autocomplete="new-password" spellcheck="false"
+                 placeholder="输入新的 API Key" oncopy="return false" oncut="return false" oncontextmenu="return false">
+          <button type="button" class="api-key-clear" id="api-key-clear" title="清空输入">✕</button>
+        </div>
+        <span class="api-key-status" id="api-key-status"></span>
+      </div>
+      <div class="srow"><label>温度</label>
+        <div class="slider-with-value">
+          <input type="range" min="0" max="200" value="70" id="setting-temp-slider">
+          <input type="number" min="0" max="2" step="0.01" value="0.70" id="setting-temp-input" class="sinput" style="width:80px;text-align:center;">
+        </div>
+      </div>
+      <div class="srow"><label>最大输出</label>
+        <div class="slider-with-value" style="gap:6px;">
+          <input type="range" min="1" max="32" value="8" id="setting-out-slider" style="flex:1;">
+          <input type="number" min="1" max="32" step="1" value="8" id="setting-out-input" class="sinput" style="width:60px;text-align:center;">
+          <span style="font-size:0.85rem;color:var(--text-hint);white-space:nowrap;">K</span>
+        </div>
+      </div>
+      <div class="srow"><label>最大上下文</label>
+        <div class="slider-with-value" style="gap:6px;">
+          <input type="range" min="32" max="1024" value="128" id="setting-ctx-slider" style="flex:1;">
+          <input type="number" min="32" max="1024" step="1" value="128" id="setting-ctx-input" class="sinput" style="width:70px;text-align:center;">
+          <span style="font-size:0.85rem;color:var(--text-hint);white-space:nowrap;">K</span>
+        </div>
+      </div>
+      <div class="srow"><label>压缩阈值</label>
+        <div class="slider-with-value" style="gap:6px;">
+          <input type="range" min="10" max="100" value="80" id="setting-ratio-slider" style="flex:1;">
+          <input type="number" min="0.1" max="1.0" step="0.05" value="0.80" id="setting-ratio-input" class="sinput" style="width:70px;text-align:center;">
+        </div>
+        <span style="font-size:0.75rem;color:var(--text-hint);margin-left:4px;">超此比例触发压缩</span>
+      </div>
+      <div class="srow preserve-thinking-row">
+        <label>思维链保留</label>
+        <label class="pt-switch">
+          <input type="checkbox" id="setting-preserve-thinking">
+          <span class="pt-slider"></span>
+        </label>
+        <span class="pt-status" id="pt-status">关闭</span>
+      </div>
+      <div class="srow pt-hint-row">
+        <span class="pt-hint">💡 将历史推理过程保留到下一轮上下文，提升多轮推理质量。是否支持取决于模型 API，请参考模型提供方的 API 文档确认。注意开启后会额外消耗 Token。</span>
+      </div>
+      <div class="srow" style="justify-content: center; margin-top: 1rem;">
+        <button id="btn-save-settings" class="cute-btn" style="width: auto; padding: 0.5rem 2rem; font-size: 0.9rem;">
+          💾 保存设置
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/md_renderer.js"></script>
+<script src="/static/js/state.js"></script>
+<script src="/static/js/ws.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/effects/shake.js"></script>
+<script src="/static/js/plan-block.js"></script>
+<script src="/static/js/blocks.js"></script>
+<script src="/static/audio/sound_effects.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

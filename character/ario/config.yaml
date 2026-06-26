@@ -1,0 +1,7 @@
+name: Ario
+description: 通用型 AI 引导助手
+tachie_dir: tachi-e/ario
+skills:
+  - setup_web_search
+speak_weight: 1.0
+speak_weight_label: "normal"

@@ -1,0 +1,32 @@
+tree bae25b6599c841aab919a83bca5b9641bf662b5b
+parent 1184d6b96112547719d3b47a7717769ead75cb4c
+author Qi Huolin <qi@aigeme.dev> 1782484928 +0800
+committer Qi Huolin <qi@aigeme.dev> 1782484928 +0800
+
+MCP runtime wiring: connect_all + tool injection + encryption removal
+
+### Fixed
+- McpRuntimeClient.connect_all() now called via FastAPI lifespan on startup
+- MCP tools from connected servers injected into ToolRegistry via McpToolAdapter
+- Config changes (add/update/delete) auto-trigger tool refresh
+
+### Added
+- core/mcp_server/tool_adapter.py: McpToolAdapter wraps MCP tools as BaseTool
+
+### Changed
+- core/mcp_server/client.py: list_tools(), call_tool(), list_all_tools()
+- core/main.py: lifespan handler, _connect_mcp_servers(), _disconnect_mcp_servers(), _refresh_mcp_tools()
+- core/tools/mcp_tools.py: set_refresh_callback with auto-trigger on config changes
+
+### Removed
+- core/mcp_server/manager.py: all encryption code (_get_encryption_key, _encrypt_field,
+  _decrypt_field, _encrypt_sensitive_fields, _decrypt_sensitive_fields, _is_sensitive_key,
+  _SENSITIVE_KEYWORDS, auto-encrypt migration in _ensure_loaded)
+
+### .gitignore
+- Added exclusions for runtime data, test output, docs, scripts, config, etc.
+- venv/ tracked (user preference)
+
+### Tests
+- tests/test_mcp_connect_e2e.py: 32 tests covering full wiring pipeline
+- tests/test_mcp_server.py: 20 tests (removed TestEncryption class)

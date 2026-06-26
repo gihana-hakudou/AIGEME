@@ -1,0 +1,12 @@
+# Ario 表情映射
+expressions:
+  default: neutral.png
+  neutral: neutral.png
+  happy: happy.png
+  sad: sad.png
+  thinking: thinking.png
+  surprised: surprised.png
+  angry: angry.png
+  shy: shy.png
+  sigh: sigh.png
+  troubled: troubled.png
