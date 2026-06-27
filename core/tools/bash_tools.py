@@ -261,7 +261,11 @@ class BashTool(BaseTool):
     """Shell 命令执行工具"""
 
     name = "bash"
-    description = "执行 shell 命令。保护 core/ 和 .git/ 不被写入；支持三种权限模式。"
+    description = (
+        "执行 shell 命令。支持运行脚本、管理文件、安装依赖等。"
+        "项目核心文件（core/ 目录和 .git/ 目录）受保护，不允许被修改或删除。"
+        "高危操作（如格式化磁盘）会被自动拦截。"
+    )
     output_type = "bash"
 
     parameters = {

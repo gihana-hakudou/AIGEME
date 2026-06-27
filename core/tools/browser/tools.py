@@ -42,14 +42,14 @@ def _import_helpers():
 class BrowserExecuteTool(BaseTool):
     """浏览器控制 — 执行 Python 代码操作浏览器（多步骤组合）
 
-    Skill 文档提供完整函数列表，详见 .AIGEME/.skill/browser-control/SKILL.md。
+    Skill 文档提供完整函数列表，可使用 skill(use, 'browser-control') 查看可用函数。
     """
 
     name = "browser_execute"
     description = (
         "通过 Python 代码控制浏览器。传入 Python 代码执行浏览器操作，"
         "支持搜索、导航、截图、提取内容、点击等。\n"
-        "函数列表详见 .AIGEME/.skill/browser-control/SKILL.md。\n"
+        "可用函数列表：使用 skill(use, 'browser-control') 查看。\n"
         "print() 输出结果，所有函数无需 import。\n"
         "下载文件请用 download_dir 变量指向的目录。"
     )
@@ -61,7 +61,7 @@ class BrowserExecuteTool(BaseTool):
             "code": {
                 "type": "string",
                 "description": (
-                    "Python 代码。函数列表详见 .AIGEME/.skill/browser-control/SKILL.md。"
+                    "Python 代码。可用函数：使用 skill(use, 'browser-control') 查看。"
                 ),
             },
             "timeout": {

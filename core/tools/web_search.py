@@ -21,7 +21,7 @@ class WebSearchTool(BaseTool):
     name = "web_search"
     description = (
         "联网搜索实时信息。返回完整文章内容、标题、URL。\n"
-        "Tavily 后端支持 include_answer 获取 AI 摘要、include_images 获取图片、search_depth 控制搜索深度。"
+        "支持获取 AI 摘要、相关图片，可控制搜索深度。"
     )
     output_type = "json"
 
@@ -39,18 +39,18 @@ class WebSearchTool(BaseTool):
             },
             "include_answer": {
                 "type": "boolean",
-                "description": "是否生成 AI 摘要答案（Tavily 后端），默认 false",
+                "description": "是否生成 AI 摘要答案，默认 false。设为 true 可获得搜索结果的总结",
                 "default": False,
             },
             "include_images": {
                 "type": "boolean",
-                "description": "是否返回相关图片（Tavily 后端），默认 false",
+                "description": "是否返回搜索结果中的相关图片，默认 false",
                 "default": False,
             },
             "search_depth": {
                 "type": "string",
                 "enum": ["basic", "advanced"],
-                "description": "搜索深度（Tavily 后端），basic=快速 / advanced=深度，默认 basic",
+                "description": "搜索深度：basic=快速粗略 / advanced=深度全面，默认 basic",
                 "default": "basic",
             },
         },

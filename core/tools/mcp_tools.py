@@ -71,7 +71,7 @@ class McpAddServerTool(BaseTool):
         "properties": {
             "id": {
                 "type": "string",
-                "description": "服务器唯一标识（必填，作为配置 key 使用）",
+                "description": "服务器唯一标识（必填，创建后不可修改）",
             },
             "name": {
                 "type": "string",
@@ -79,7 +79,7 @@ class McpAddServerTool(BaseTool):
             },
             "description": {
                 "type": "string",
-                "description": "服务器描述（可选，用于系统提示词注入，长度不超过256字符）",
+                "description": "服务器描述（可选，用于说明这个服务器提供什么功能，不超过256字符）",
             },
             "transport": {
                 "type": "string",
@@ -161,8 +161,8 @@ class McpUpdateServerTool(BaseTool):
 
     name = "mcp_update_server"
     description = (
-        "修改已有的 MCP 服务器配置。使用 patch 语义：只更新传入的字段，未提供的字段保持不变。"
-        "热加载规则：修改 name/description 不需要重启；修改 config/transport 需要重启。"
+        "修改已有的 MCP 服务器配置。只需传入要修改的字段，未提供的字段会保持不变。"
+        "注意：修改名称或描述会立即生效；修改传输协议或配置需要重新连接服务器。"
     )
     output_type = "json"
 
@@ -175,20 +175,20 @@ class McpUpdateServerTool(BaseTool):
             },
             "name": {
                 "type": "string",
-                "description": "新的显示名称（可选，热加载）",
+                "description": "新的显示名称（可选，修改后立即生效）",
             },
             "description": {
                 "type": "string",
-                "description": "新的描述（可选，热加载，不超过256字符）",
+                "description": "新的描述（可选，修改后立即生效，不超过256字符）",
             },
             "transport": {
                 "type": "string",
                 "enum": ["stdio", "sse", "streamable_http"],
-                "description": "新的传输协议（可选，修改需重启）",
+                "description": "新的传输协议（可选，修改后需要重新连接服务器）",
             },
             "config": {
                 "type": "object",
-                "description": "新的传输配置（可选，修改需重启）",
+                "description": "新的传输配置（可选，修改后需要重新连接服务器）",
             },
             "enabled": {
                 "type": "boolean",
@@ -227,8 +227,8 @@ class McpDeleteServerTool(BaseTool):
 
     name = "mcp_delete_server"
     description = (
-        "删除一个 MCP 服务器配置。采用软删除机制：标记为已删除而非物理删除，"
-        "保留 30 天后可由管理员清理。返回该服务器之前是否处于活动状态。"
+        "删除一个 MCP 服务器配置。删除后服务器会被停用，30 天内可以恢复（系统会保留配置）。"
+        "返回该服务器之前是否处于活动状态。"
     )
     output_type = "json"
 
