@@ -220,8 +220,9 @@ class TaskManager:
     def scan_due(self, now: datetime | None = None) -> list[dict]:
         """扫描到期待办，返回待注入的任务列表
 
-        条件：status=pending AND trigger_at <= now
-        扫描后自动将触发状态改为 triggered（同步操作，文件读写轻量）
+        包含两种任务：
+        - pending 且 trigger 时间已到 → 自动改为 triggered 后返回
+        - 已 triggered 但未 done/cancelled → 继续返回（防止被 LLM 忽略后丢失）
         """
         if now is None:
             now = datetime.now()
@@ -235,14 +236,18 @@ class TaskManager:
             fm, body = _load_yaml(content)
             if not fm:
                 continue
-            if fm.get("status") != "pending":
+            status = fm.get("status", "")
+
+            # done / cancelled 跳过
+            if status in ("done", "cancelled"):
                 continue
 
             ta = fm.get("trigger_at", "")
             if not ta:
                 continue
 
-            if self._is_due(ta, now):
+            # pending 且到期 → 标记 triggered，加入列表
+            if status == "pending" and self._is_due(ta, now):
                 task_info = {
                     "id": f.stem,
                     "title": fm.get("title", ""),
@@ -262,6 +267,16 @@ class TaskManager:
                 except Exception:
                     pass
                 logger.info("[TASK] 待办到期 injected: %s (%s)", task_info["title"], ta)
+
+            # triggered 未 done → 继续出现，直到被处理
+            elif status == "triggered":
+                due.append({
+                    "id": f.stem,
+                    "title": fm.get("title", ""),
+                    "trigger_at": ta,
+                    "repeat": fm.get("repeat", "") or None,
+                    "content": body.strip()[:200],
+                })
 
         return due
 
