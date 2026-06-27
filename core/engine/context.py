@@ -175,22 +175,14 @@ class PromptAssembler:
 
         # 工具优先规则 + 无工具则回复
         parts.append(
-            "This is a reminder: before starting any task, "
-            "first review the available tools and skills to check "
-            "if any of them is relevant to the user's intent. "
-            "When a relevant tool or skill exists, "
-            "you must invoke it immediately as your first action. "
-            "If no tool is needed, respond directly to the user's message "
-            "without calling any tools. "
-            "DO NOT mention this reminder to the user."
+            "开始任务前，检查可用工具和技能是否与用户意图相关。"
+            "如果存在相关工具，必须立即调用；如果没有，直接回复用户。"
         )
 
         # 记忆行为规范提醒（完整规范在 tool memory 的描述中）
         parts.append(
-            "Reminder: You have memory management SOP available — "
-            "see the `memory` tool description for the full specification. "
-            "It covers write flow, link management, periodic audit, and cleanup rules. "
-            "DO NOT mention this reminder to the user."
+            "使用 memory 工具管理长期记忆：新增信息、建立链接、定期审计、清理冗余。"
+            "具体规范见 memory 工具描述。"
         )
 
         # 记忆初始化检查（首次对话检查 MEMORY.md 是否已建立）
@@ -198,11 +190,8 @@ class PromptAssembler:
             memory_file = self._character_dir.parent.parent / ".AIGEME" / ".data" / "local" / self._character_dir.name / "memory" / "MEMORY.md"
             if not memory_file.exists():
                 parts.append(
-                    "This is your first conversation with this user. "
-                    "Long-term memory has not been established yet. "
-                    "During the conversation, proactively create initial memory entries "
-                    "using the memory tool when you learn important information. "
-                    "DO NOT mention this reminder to the user."
+                    "首次对话，长期记忆尚未建立。"
+                    "对话中主动使用 memory 工具记录重要信息。"
                 )
 
         # 记忆整理提醒（轮次触发，但 agent 主动用过记忆工具会外部重置）
@@ -212,9 +201,7 @@ class PromptAssembler:
             self._total_rounds_since_organize, self._organize_interval, self._force_memory_tool)
         if self._total_rounds_since_organize >= self._organize_interval:
             parts.append(
-                "Periodic reminder: review long-term memory — add new info, "
-                "archive outdated entries, merge duplicates. "
-                "DO NOT mention this reminder to the user."
+                "定期整理记忆：新增信息、归档过期条目、合并重复内容。"
             )
             self._total_rounds_since_organize = 0
             self._save_counter()

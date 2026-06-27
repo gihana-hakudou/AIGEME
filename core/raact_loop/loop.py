@@ -825,7 +825,7 @@ class RaActLoop:
                     self._prompt_assembler._force_memory_tool = True  # 下轮继续强制
                     logger.info("[TOOL_DEBUG] 强制 memory 被 LLM 无视，下轮继续强制")
                     # 注入一条 user 消息提醒 LLM 必须调 memory
-                    messages.append({"role": "user", "content": "Periodic memory review is needed. You must call the memory tool now."})
+                    messages.append({"role": "user", "content": "必须调用 memory 工具进行记忆整理。"})
                     continue  # 不退出，走下一轮强制调用
 
                 # 正常无工具调用 → 结束循环
