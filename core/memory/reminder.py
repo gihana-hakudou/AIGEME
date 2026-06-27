@@ -10,11 +10,35 @@ import uuid
 import yaml
 import hashlib
 import logging
+import re
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# 星期解析映射（周一=0，周日=6）
+_WEEKDAY_MAP = {
+    "1": 0, "一": 0, "周一": 0, "星期一": 0,
+    "2": 1, "二": 1, "周二": 1, "星期二": 1,
+    "3": 2, "三": 2, "周三": 2, "星期三": 2,
+    "4": 3, "四": 3, "周四": 3, "星期四": 3,
+    "5": 4, "五": 4, "周五": 4, "星期五": 4,
+    "6": 5, "六": 5, "周六": 5, "星期六": 5,
+    "7": 6, "日": 6, "周日": 6, "星期日": 6,
+}
+
+
+def _parse_weekday(s: str) -> int:
+    """将中文/数字星期转换为 python weekday（周一=0...周日=6）"""
+    s = s.strip()
+    if s in _WEEKDAY_MAP:
+        return _WEEKDAY_MAP[s]
+    # 尝试直接解析数字
+    try:
+        return (int(s) - 1) % 7
+    except ValueError:
+        return 0  # 默认周一
 
 
 def _dump_yaml(data: dict) -> str:
@@ -57,9 +81,14 @@ class TaskManager:
 
         Args:
             title: 任务标题
-            trigger_at: 触发时间 "HH:MM" 或 "YYYY-MM-DD HH:MM"
+            trigger_at: 触发时间
+              "HH:MM" → 每日此时触发
+              "YYYY-MM-DD HH:MM" → 单次触发
+              "周N HH:MM" → 每周周N此时触发（如"周3 10:00"每周三）
+              "星期一 HH:MM" → 每周此时触发（如"星期一 10:00"）
             content: 任务详情（Agent 可读）
             repeat: 重复模式 null/"daily"/"weekly"/"monthly"
+              如果已通过 trigger_at 指定了周几，repeat 可省略
 
         Returns:
             {"status": "ok", "result": {"id": "...", "title": "..."}}
@@ -166,6 +195,28 @@ class TaskManager:
             })
         return {"status": "ok", "result": {"count": len(results), "tasks": results}}
 
+    async def read_task(self, task_id: str) -> dict:
+        """读取单个任务详情"""
+        file_path = self._task_dir / f"{task_id}.md"
+        if not file_path.exists():
+            return {"status": "error", "error": f"任务不存在: {task_id}"}
+        fm, body = _load_yaml(file_path.read_text("utf-8"))
+        if not fm:
+            return {"status": "error", "error": f"任务文件损坏: {task_id}"}
+        return {
+            "status": "ok",
+            "result": {
+                "id": task_id,
+                "title": fm.get("title", ""),
+                "status": fm.get("status", ""),
+                "trigger_at": fm.get("trigger_at", ""),
+                "repeat": fm.get("repeat", "") or None,
+                "last_triggered": fm.get("last_triggered", "") or None,
+                "created": fm.get("created", ""),
+                "content": body.strip(),
+            },
+        }
+
     def scan_due(self, now: datetime | None = None) -> list[dict]:
         """扫描到期待办，返回待注入的任务列表
 
@@ -220,13 +271,34 @@ class TaskManager:
     def _is_due(trigger_at: str, now: datetime) -> bool:
         """判断是否到期
 
-        支持两种格式：
+        支持三种格式：
         - "HH:MM"         → 每日时间点
         - "YYYY-MM-DD HH:MM" → 绝对时间点
+        - "周N HH:MM"     → 每周周N（如"周3 10:00"）或"星期一 HH:MM"
         """
         trigger = trigger_at.strip()
         if not trigger:
             return False
+
+        # 尝试解析 "周N HH:MM" 或 "星期一 HH:MM"（每周）
+        weekday_match = re.match(
+            r'^(周[一二三四五六日日]|星期[一二三四五六日日]|[1-7])\s+(\d{1,2}:\d{2})$',
+            trigger,
+        )
+        if weekday_match:
+            day_str = weekday_match.group(1)
+            time_str = weekday_match.group(2)
+            target_dow = _parse_weekday(day_str)
+            try:
+                t = datetime.strptime(time_str, "%H:%M")
+                # 找到下一个 target_dow
+                days_ahead = (target_dow - now.weekday()) % 7
+                if days_ahead == 0:
+                    today_target = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+                    return now >= today_target
+                return False  # 还没到那天
+            except ValueError:
+                pass
 
         # 尝试解析 "HH:MM"（每日时间）
         if len(trigger) == 5 and ":" in trigger:
@@ -251,6 +323,23 @@ class TaskManager:
     def _next_repeat(trigger_at: str, days: int) -> str:
         """计算下次重复触发时间"""
         now = datetime.now()
+        # 检测周几格式："周3 HH:MM" 或 "星期一 HH:MM"
+        weekday_match = re.match(
+            r'^(周[一二三四五六日日]|星期[一二三四五六日日]|[1-7])\s+(\d{1,2}:\d{2})$',
+            trigger_at,
+        )
+        if weekday_match:
+            day_str = weekday_match.group(1)
+            time_str = weekday_match.group(2)
+            target_dow = _parse_weekday(day_str)
+            try:
+                t = datetime.strptime(time_str, "%H:%M")
+                next_time = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+                while next_time <= now or next_time.weekday() != target_dow:
+                    next_time += timedelta(days=1)
+                return next_time.strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
         # 如果是 "HH:MM" 格式，加 days 天
         if len(trigger_at) == 5 and ":" in trigger_at:
             try:

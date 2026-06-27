@@ -174,8 +174,8 @@ class MemoryTool(BaseTool):
             # ── 待办事项参数 ──
             "task_action": {
                 "type": "string",
-                "enum": ["add", "done", "cancel", "list"],
-                "description": "待办操作: add=新增 / done=完成 / cancel=取消 / list=列出",
+                "enum": ["add", "done", "cancel", "list", "read"],
+                "description": "待办操作: add=新增 / done=完成 / cancel=取消 / list=列出 / read=读取详情",
             },
             "trigger_at": {
                 "type": "string",
@@ -288,7 +288,12 @@ class MemoryTool(BaseTool):
                     return {"status": "error", "error": "task cancel 需要 title（任务ID）参数"}
                 return await tm.cancel(title)
             if task_action == "list":
-                return await tm.list_tasks(status or "")
+                status_filter = kwargs.get("status", "")
+                return await tm.list_tasks(status_filter)
+            if task_action == "read":
+                if not title:
+                    return {"status": "error", "error": "task read 需要 title（任务ID）参数"}
+                return await tm.read_task(title)
             return {"status": "error", "error": f"不支持的任务操作: {task_action}"}
 
         if operation == "graph_search":
