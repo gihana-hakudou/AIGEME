@@ -228,8 +228,8 @@ class PromptAssembler:
                     lines = ["## ⏰ 待处理事项"]
                     for t in due:
                         repeat_tag = f" ({t['repeat']})" if t.get("repeat") else ""
-                        lines.append(f"- [{t['id']}] {t['title']}（原定 {t['trigger_at']}{repeat_tag}）: {t['content']}")
-                        lines.append(f"  完成: done(id={t['id']}) / 取消: cancel(id={t['id']})")
+                        lines.append(f"- {t['title']}（原定 {t['trigger_at']}{repeat_tag}）: {t['content']}")
+                        lines.append(f"  完成: done(id={t['title']}) / 取消: cancel(id={t['title']})")
                     parts.append("\n".join(lines))
             except Exception:
                 pass

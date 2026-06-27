@@ -70,6 +70,24 @@ class TaskManager:
 
     # ── 公开 API ────────────────────────────────────────────────
 
+    def _resolve_task(self, task_id: str) -> Path | None:
+        """通过 UUID（文件名）或 title 查找任务文件
+
+        优先按文件名匹配，失败则扫描所有文件匹配 title 字段
+        """
+        direct = self._task_dir / f"{task_id}.md"
+        if direct.exists():
+            return direct
+        # 按 title 匹配
+        for f in self._task_dir.glob("*.md"):
+            try:
+                fm, _ = _load_yaml(f.read_text("utf-8"))
+                if fm and fm.get("title") == task_id:
+                    return f
+            except Exception:
+                continue
+        return None
+
     async def add(
         self,
         title: str,
@@ -122,8 +140,8 @@ class TaskManager:
         单次任务：status → done
         重复任务：重算下次 trigger_at，status → pending
         """
-        file_path = self._task_dir / f"{task_id}.md"
-        if not file_path.exists():
+        file_path = self._resolve_task(task_id)
+        if not file_path:
             return {"status": "error", "error": f"任务不存在: {task_id}"}
 
         fm, body = _load_yaml(file_path.read_text("utf-8"))
@@ -158,8 +176,8 @@ class TaskManager:
 
     async def cancel(self, task_id: str) -> dict:
         """取消任务"""
-        file_path = self._task_dir / f"{task_id}.md"
-        if not file_path.exists():
+        file_path = self._resolve_task(task_id)
+        if not file_path:
             return {"status": "error", "error": f"任务不存在: {task_id}"}
 
         fm, body = _load_yaml(file_path.read_text("utf-8"))
@@ -197,8 +215,8 @@ class TaskManager:
 
     async def read_task(self, task_id: str) -> dict:
         """读取单个任务详情"""
-        file_path = self._task_dir / f"{task_id}.md"
-        if not file_path.exists():
+        file_path = self._resolve_task(task_id)
+        if not file_path:
             return {"status": "error", "error": f"任务不存在: {task_id}"}
         fm, body = _load_yaml(file_path.read_text("utf-8"))
         if not fm:
