@@ -109,7 +109,7 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
     "anthropic": {"api_base": "https://api.anthropic.com", "native": True},
     "deepseek": {"api_base": "https://api.deepseek.com", "native": True},
     "dashscope": {"api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "native": False},
-    "bigmodel": {"api_base": "https://open.bigmodel.cn/api/paas/v4", "native": True},
+    "bigmodel": {"api_base": "https://open.bigmodel.cn/api/paas/v4", "native": False},
     "azure": {"api_base": "https://YOUR_RESOURCE.openai.azure.com", "native": True},
     "gemini": {"api_base": "https://generativelanguage.googleapis.com", "native": True},
     # 本地部署 — 按默认端口分组

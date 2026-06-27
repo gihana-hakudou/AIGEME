@@ -83,6 +83,13 @@ class InstructorClient:
     ) -> RaActResponse:
         """调用 Instructor 获取结构化 RaActResponse（阻塞式，用于非流式场景）"""
         dict_messages = _messages_to_dicts(messages, preserve_thinking=self.preserve_thinking)
+        model_name = model or self._model
+
+        # 非原生 provider 时剥离 provider 前缀，避免 litellm 不认识的 provider 前缀报错
+        if self._api_base and "/" in model_name and not self._native_provider:
+            _, _, _name = model_name.partition("/")
+            if _name:
+                model_name = _name.strip()
 
         completion_kwargs = {}
         if self._api_base:
@@ -111,7 +118,7 @@ class InstructorClient:
         completion_kwargs["extra_body"] = extra_body
 
         response: RaActResponse = await self._client.chat.completions.create(
-            model=model or self._model,
+            model=model_name,
             response_model=RaActResponse,
             messages=dict_messages,
             max_retries=self._max_retries,
