@@ -188,7 +188,7 @@ class MemoryTool(BaseTool):
             },
             "id": {
                 "type": "string",
-                "description": "任务ID（UUID），task done/cancel/read 时必填，代替 title 参数",
+                "description": "任务标识。task add 时作为标题（名称）；task done/cancel/read 时作为任务ID",
             },
         },
         "required": ["operation"],
@@ -281,9 +281,10 @@ class MemoryTool(BaseTool):
             from core.memory.reminder import TaskManager
             tm = TaskManager(memory_dir)
             if task_action == "add":
-                if not title or not trigger_at:
+                _task_title = title or id or ""
+                if not _task_title or not trigger_at:
                     return {"status": "error", "error": "task add 需要 title 和 trigger_at 参数"}
-                return await tm.add(title=title, trigger_at=trigger_at, content=content or "", repeat=repeat)
+                return await tm.add(title=_task_title, trigger_at=trigger_at, content=content or "", repeat=repeat)
             if task_action == "done":
                 _task_id = id or title
                 if not _task_id:
