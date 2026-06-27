@@ -201,7 +201,9 @@ class PromptAssembler:
             self._total_rounds_since_organize, self._organize_interval, self._force_memory_tool)
         if self._total_rounds_since_organize >= self._organize_interval:
             parts.append(
-                "定期整理记忆：新增信息、归档过期条目、合并重复内容。"
+                f"你已经 {self._organize_interval} 轮没有整理过记忆了。"
+                "通过 memory 工具将最近成功或失败的经历、值得记录的信息作为新记忆保存，"
+                "同时归档过期条目、修改错误信息、合并重复内容。"
             )
             self._total_rounds_since_organize = 0
             self._save_counter()
