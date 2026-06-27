@@ -481,6 +481,16 @@ class RaActLoop:
 
             logger.debug("RaAct round %d/%d", round_num, MAX_RAACT_ROUNDS)
 
+            # 最后一轮：注入结束提示 + tool_choice=none，让 LLM 自然总结退出
+            _last_round = round_num == MAX_RAACT_ROUNDS
+            if _last_round:
+                _summary_msg = {
+                    "role": "user",
+                    "content": "这是最后一轮，请总结当前进度和结果，不需要再调用工具。",
+                }
+                messages.append(_summary_msg)
+                logger.info("RaAct 最后一轮，注入总结提示词 + tool_choice=none")
+
             # 调用 Instructor（流式推送 thinking/speech 到前端）
             response: RaActResponse | None = None
             try:
@@ -489,6 +499,7 @@ class RaActLoop:
                     send_block=send_block,
                     tools=self._registry.schemas,
                     cancelled_check=lambda: self._cancelled,
+                    tool_choice="none" if _last_round else None,
                 )
             except ContextWindowExceededError as e:
                 logger.warning("上下文窗口超限: %s，强制丢弃旧消息后重试", e)
@@ -821,27 +832,9 @@ class RaActLoop:
                     logger.info("[TOOL_DEBUG]   [%d] %s: content=%s", mi, role, content[:60] if content else "(empty)")
 
             if round_num == MAX_RAACT_ROUNDS:
-                logger.info("RaAct 达到最大轮数 %d，注入总结提示词", MAX_RAACT_ROUNDS)
-
-                # 注入总结提示词，让 LLM 输出结论（不调用工具）
-                _summary_msg = {
-                    "role": "user",
-                    "content": "已到达最大工具调用次数，请总结当前进度和初步结论，不需要再调用工具。",
-                }
-                messages.append(_summary_msg)
-                try:
-                    _summary_resp = await self._instructor.create_completion(
-                        messages=[self._dict_to_message(m) for m in messages],
-                    )
-                    final_say = _summary_resp.say or ""
-                except Exception as _se:
-                    logger.warning("总结提示词调用失败: %s", _se)
-                    final_say = ""
-
-                if not final_say:
-                    final_say = "\n".join(accumulated_say) if accumulated_say else (response.say or "")
-                    if not final_say:
-                        final_say = "*对话已达最大轮数，未能输出完整结论*"
+                # 最后一条消息已经是总结提示，tool_choice=none 保证不会再有工具调用
+                # 循环会自然结束（无 tool_calls → break）
+                logger.info("RaAct 达到最大轮数 %d，等待 LLM 输出总结", MAX_RAACT_ROUNDS)
                 break
 
         # 拼接本轮结果到 history（仅当前轮次的 in-loop 消息，不包含历史）

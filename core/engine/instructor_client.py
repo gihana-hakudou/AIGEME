@@ -136,14 +136,18 @@ class InstructorClient:
         model: str | None = None,
         tools: list[dict] | None = None,
         cancelled_check: Callable[[], bool] | None = None,
+        tool_choice: str | None = None,
     ) -> RaActResponse:
         """流式调用 LLM，推送 thinking/speech 到前端，流结束后提取 tool_calls
-        
+
         流程:
           1. litellm streaming，实时推 thinking/speech block
           2. 用 index 跟踪收集流式 tool_calls chunks
           3. 流结束后检查 finish_reason，如果 == "tool_calls" 则使用收集的数据
           4. 构建 RaActResponse 返回
+
+        Args:
+            tool_choice: 控制工具调用行为，"auto"/"none"/"required"/None(默认litellm行为)
         """
         dict_messages = _messages_to_dicts(messages, preserve_thinking=self.preserve_thinking)
         model_name = model or self._model
@@ -232,7 +236,7 @@ class InstructorClient:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
             tools=openai_tools,
-            tool_choice="auto",
+            tool_choice=tool_choice or "auto",
             **kwargs,
         )
 
