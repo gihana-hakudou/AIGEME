@@ -95,7 +95,8 @@ class BrowserExecuteTool(BaseTool):
             if path is None:
                 path = str(_ss_dir / f"browser_ss_{time.strftime('%Y%m%d_%H%M%S')}.png")
             result = _orig_ss(path, full=full, max_dim=max_dim)
-            _taken_screenshots.append(path)
+            # 用 result["path"]（capture_screenshot 返回的绝对路径），避免 path 参数是相对路径
+            _taken_screenshots.append(result["path"])
             return result
 
         helpers = _import_helpers()
