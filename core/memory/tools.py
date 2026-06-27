@@ -110,7 +110,7 @@ class MemoryTool(BaseTool):
             },
             "title": {
                 "type": "string",
-                "description": "记忆标题（文件名不含 .md）。add/read/del/edit 时必填",
+                "description": "记忆标题（文件名不含 .md）。add/read/del/edit 时必填；task done/cancel/read 时用任务ID代替",
             },
             "content": {
                 "type": "string",
