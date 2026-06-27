@@ -179,7 +179,7 @@ class MemoryTool(BaseTool):
             },
             "trigger_at": {
                 "type": "string",
-                "description": "触发时间 \"HH:MM\" 或 \"YYYY-MM-DD HH:MM\"（task add 时必填）",
+                "description": "触发时间 \"HH:MM\" 或 \"YYYY-MM-DD HH:MM\" 或 \"周3 10:00\"（task add 时必填）",
             },
             "repeat": {
                 "type": "string",
@@ -188,7 +188,7 @@ class MemoryTool(BaseTool):
             },
             "id": {
                 "type": "string",
-                "description": "任务标识。task add 时作为标题（名称）；task done/cancel/read 时作为任务ID",
+                "description": "提醒内容/标题（task add 时必填）或任务ID（task done/cancel/read 时必填）",
             },
         },
         "required": ["operation"],
@@ -281,9 +281,9 @@ class MemoryTool(BaseTool):
             from core.memory.reminder import TaskManager
             tm = TaskManager(memory_dir)
             if task_action == "add":
-                _task_title = title or id or ""
+                _task_title = id or title or ""
                 if not _task_title or not trigger_at:
-                    return {"status": "error", "error": "task add 需要 title 和 trigger_at 参数"}
+                    return {"status": "error", "error": "task add 需要 id（提醒内容）和 trigger_at 参数"}
                 return await tm.add(title=_task_title, trigger_at=trigger_at, content=content or "", repeat=repeat)
             if task_action == "done":
                 _task_id = id or title
