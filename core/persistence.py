@@ -1,7 +1,9 @@
 """对话持久化 — 两层存储（data + meta），turn_end 追加写入"""
 
+import asyncio
 import json
 import logging
+import tempfile
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -12,6 +14,43 @@ from core.engine.compressor import trim_tools
 from core.tools.file_lock import acquire_file_lock
 
 logger = logging.getLogger(__name__)
+
+# Windows 文件写重试配置
+_MAX_WRITE_RETRIES = 5
+_WRITE_RETRY_DELAY_MS = 50  # 毫秒，每次递增
+
+
+async def _safe_write_text(path: Path, content: str) -> None:
+    """原子写 + 重试：先写临时文件再重命名，Windows 下抗文件锁争用"""
+    for attempt in range(1, _MAX_WRITE_RETRIES + 1):
+        try:
+            # 写入临时文件再重命名（原子操作，避免写中断导致文件损坏）
+            tmp_dir = path.parent
+            tmp_dir.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                mode="w",
+                encoding="utf-8",
+                dir=str(tmp_dir),
+                prefix=f"._{path.name}.",
+                suffix=".tmp",
+                delete=False,
+            ) as f:
+                f.write(content)
+                tmp_path = Path(f.name)
+            # 原子重命名（Windows 上 replace 等效于 rename，覆盖目标）
+            tmp_path.replace(path)
+            return
+        except PermissionError:
+            if attempt < _MAX_WRITE_RETRIES:
+                await asyncio.sleep(attempt * _WRITE_RETRY_DELAY_MS / 1000)
+            else:
+                raise
+        except OSError:
+            # 其他 IO 错误也重试
+            if attempt < _MAX_WRITE_RETRIES:
+                await asyncio.sleep(attempt * _WRITE_RETRY_DELAY_MS / 1000)
+            else:
+                raise
 
 
 class Persistence:
@@ -128,9 +167,9 @@ class Persistence:
             if len(records) > self._max_file_records:
                 await self._split_file("conversations", records, file_path)
             else:
-                file_path.write_text(
+                await _safe_write_text(
+                    file_path,
                     json.dumps(records, ensure_ascii=False, indent=2),
-                    encoding="utf-8",
                 )
 
     async def _split_file(self, base_name: str, records: list[dict], original_path: Path) -> None:
@@ -146,13 +185,13 @@ class Persistence:
         new_path = self._conv_dir / f"{base_name}_{next_num:03d}.json"
         lock = await acquire_file_lock(new_path)
         async with lock:
-            new_path.write_text(
+            await _safe_write_text(
+                new_path,
                 json.dumps(records, ensure_ascii=False, indent=2),
-                encoding="utf-8",
             )
 
         # 清空主文件，避免后续写入重复触发分割
-        original_path.write_text("[]", encoding="utf-8")
+        await _safe_write_text(original_path, "[]")
 
     @staticmethod
     def _load_llm_messages(records: list[dict]) -> list[BaseMessage]:
