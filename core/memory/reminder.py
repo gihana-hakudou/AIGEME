@@ -199,7 +199,6 @@ class TaskManager:
                 "trigger_at": fm.get("trigger_at", ""),
                 "repeat": fm.get("repeat", "") or None,
                 "last_triggered": fm.get("last_triggered", "") or None,
-                "preview": body.strip()[:60],
             })
         return {"status": "ok", "result": {"count": len(results), "tasks": results}}
 
