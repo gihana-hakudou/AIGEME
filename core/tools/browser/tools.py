@@ -163,21 +163,24 @@ class BrowserExecuteTool(BaseTool):
                         w, h = img.size
 
                     b64 = base64.b64encode(ss_data).decode()
-                    result["data_url"] = f"data:image/png;base64,{b64}"
+                    data_url = f"data:image/png;base64,{b64}"
                     result["screenshot_path"] = ss_path
                     result["width"] = w
                     result["height"] = h
                     result["size_kb"] = round(len(ss_data) / 1024, 1)
                     result["file"] = ss_path
+                    result["data_url_preview"] = data_url[:80] + "..."  # 仅摘要，不给LLM看完整base64
                 except Exception:
                     pass
 
-            has_screenshot = "data_url" in result
+            has_screenshot = "screenshot_path" in result
             result_dict = {
                 "status": "ok",
                 "result": result,
                 "output_type": "image" if has_screenshot else "json",
             }
+            if has_screenshot:
+                result_dict["_ss_data_url"] = data_url  # 内部用，不进入 _extract_tool_content
             if has_screenshot and "data_url" in result:
                 result_dict["data_url"] = result["data_url"]  # 提升到顶层，供 loop.py L680 直接检查
             return result_dict
