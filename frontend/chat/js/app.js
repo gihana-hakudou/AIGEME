@@ -551,7 +551,7 @@
                     ptStatus.textContent = settings.preserve_thinking ? '开启' : '关闭';
                 }
                 // 权限模式
-                var permModeSelect = document.getElementById('setting-permission-mode');
+                var permModeSelect = document.getElementById('perm-mode-select');
                 if (permModeSelect && settings.permission_mode) {
                     permModeSelect.value = settings.permission_mode;
                 }
@@ -643,7 +643,7 @@
                 payload.preserve_thinking = settingPreserveThinking.checked;
             }
             // 权限模式
-            var permModeSelect = document.getElementById('setting-permission-mode');
+            var permModeSelect = document.getElementById('perm-mode-select');
             if (permModeSelect) {
                 payload.permission_mode = permModeSelect.value;
             }
@@ -743,7 +743,7 @@
         }
 
         // 权限模式自动保存
-        var permModeSelect = document.getElementById('setting-permission-mode');
+        var permModeSelect = document.getElementById('perm-mode-select');
         if (permModeSelect) {
             permModeSelect.addEventListener('change', saveSettings);
         }

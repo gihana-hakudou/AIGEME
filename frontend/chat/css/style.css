@@ -1258,6 +1258,24 @@ html, body {
   accent-color: var(--primary); 
 }
 
+.perm-mode-label {
+  margin-left: auto;
+}
+
+.perm-mode-select {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid var(--border-color, #444);
+  border-radius: 4px;
+  background: var(--bg-secondary, #2a2a2a);
+  color: var(--text-primary, #e0e0e0);
+  cursor: pointer;
+  outline: none;
+}
+.perm-mode-select:hover {
+  border-color: var(--primary);
+}
+
 /* ═══ SIDE PANELS ═══ */
 .side-panel {
   position: absolute;
