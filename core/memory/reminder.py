@@ -121,7 +121,7 @@ class TaskManager:
 
         return {
             "status": "ok",
-            "result": {"id": task_id, "title": title, "trigger_at": trigger_at, "repeat": repeat},
+            "result": {"id": task_id, "content": title, "trigger_at": trigger_at, "repeat": repeat},
         }
 
     async def done(self, task_id: str) -> dict:
@@ -194,7 +194,7 @@ class TaskManager:
                 continue
             results.append({
                 "id": f.stem,
-                "title": fm.get("title", ""),
+                "content": fm.get("title", ""),
                 "status": fm.get("status", ""),
                 "trigger_at": fm.get("trigger_at", ""),
                 "repeat": fm.get("repeat", "") or None,
@@ -215,7 +215,7 @@ class TaskManager:
             "status": "ok",
             "result": {
                 "id": task_id,
-                "title": fm.get("title", ""),
+                "content": fm.get("title", ""),
                 "status": fm.get("status", ""),
                 "trigger_at": fm.get("trigger_at", ""),
                 "repeat": fm.get("repeat", "") or None,
@@ -258,10 +258,10 @@ class TaskManager:
             if status == "pending" and self._is_due(ta, now):
                 task_info = {
                     "id": f.stem,
-                    "title": fm.get("title", ""),
+                    "content": fm.get("title", ""),
                     "trigger_at": ta,
                     "repeat": fm.get("repeat", "") or None,
-                    "content": body.strip()[:200],
+                    "detail": body.strip()[:200],
                 }
                 due.append(task_info)
 
@@ -280,10 +280,10 @@ class TaskManager:
             elif status == "triggered":
                 due.append({
                     "id": f.stem,
-                    "title": fm.get("title", ""),
+                    "content": fm.get("title", ""),
                     "trigger_at": ta,
                     "repeat": fm.get("repeat", "") or None,
-                    "content": body.strip()[:200],
+                    "detail": body.strip()[:200],
                 })
 
         return due
