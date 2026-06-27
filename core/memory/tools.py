@@ -122,7 +122,7 @@ class MemoryTool(BaseTool):
             "type": {
                 "type": "string",
                 "enum": ["fact", "preference", "task_status", "event", "emotion", "reflection", "process"],
-                "description": "记忆类型。add 时必填。event=事件/fact=事实/process=过程/emotion=情感/reflection=反思",
+                "description": "记忆类型。add 时可选（默认 fact）。event=事件/fact=事实/process=过程/emotion=情感/reflection=反思",
             },
             "query": {
                 "type": "string",
@@ -224,14 +224,15 @@ class MemoryTool(BaseTool):
         index = MemoryIndex(memory_dir)
 
         if operation == "add":
-            if not content or not type:
+            if not content:
                 return {
                     "status": "error",
-                    "error": "add 操作需要 content（内容）和 type（类型）参数",
+                    "error": "add 操作需要 content（内容）参数",
                 }
-            # id 可选：提供则做文件名/标题，不提供则自动生成
+            # type 可选，默认 fact；id 可选，不填自动生成
+            _type = type or "fact"
             _id = id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
-            return await self._add_memory(memory_dir, index, _id, content, type, importance)
+            return await self._add_memory(memory_dir, index, _id, content, _type, importance)
 
         if operation == "read":
             _read_id = id or ""
