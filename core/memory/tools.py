@@ -2,8 +2,8 @@
 
 import asyncio
 import logging
+import random
 import re
-import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -22,26 +22,9 @@ MEMORY_BASE = Path(__file__).parent.parent.parent / ".AIGEME" / ".data"
 
 
 def _resolve_memory_file(memory_dir: Path, mem_id: str) -> Path | None:
-    """按 id 查找记忆文件
-
-    优先按文件名匹配，失败则扫描所有文件匹配 frontmatter 中的 id 字段
-    """
+    """按 id（即文件名）查找记忆文件"""
     direct = memory_dir / f"{mem_id}.md"
-    if direct.exists():
-        return direct
-    for f in memory_dir.glob("*.md"):
-        try:
-            content = f.read_text("utf-8")
-            if content.startswith("---\n"):
-                parts = content.split("---\n", 2)
-                if len(parts) >= 3:
-                    import yaml
-                    fm = yaml.safe_load(parts[1])
-                    if isinstance(fm, dict) and fm.get("id") == mem_id:
-                        return f
-        except Exception:
-            continue
-    return None
+    return direct if direct.exists() else None
 
 
 def _get_memory_dir(user_id: str = "local", char_id: str = "ario") -> Path:
@@ -208,7 +191,7 @@ class MemoryTool(BaseTool):
             },
             "id": {
                 "type": "string",
-                "description": "记忆/任务标识。memory add 时可选（不填自动用内容首段），read/del/edit 时必填；task done/cancel/read 时必填",
+                "description": "记忆/任务ID（add时自动生成）。memory read/del/edit、task done/cancel/read 时必填",
             },
         },
         "required": ["operation"],
@@ -241,15 +224,14 @@ class MemoryTool(BaseTool):
         index = MemoryIndex(memory_dir)
 
         if operation == "add":
-            _mem_id = id or content or ""
-            if not _mem_id or not type:
+            if not content or not type:
                 return {
                     "status": "error",
                     "error": "add 操作需要 content（内容）和 type（类型）参数",
                 }
-            # UUID 做文件名（安全），id 存 frontmatter 供检索
-            _uuid = str(uuid.uuid4())
-            return await self._add_memory(memory_dir, index, _uuid, content or _mem_id, type, importance, id_field=_mem_id)
+            # 时间戳+随机2位做ID和文件名，content就是内容
+            _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
+            return await self._add_memory(memory_dir, index, _id, content, type, importance)
 
         if operation == "read":
             _read_id = id or ""
@@ -354,7 +336,6 @@ class MemoryTool(BaseTool):
         content: str,
         type: str,
         importance: int,
-        id_field: str | None = None,
     ) -> dict:
         """新增记忆
 
@@ -385,8 +366,6 @@ class MemoryTool(BaseTool):
                 # ★ B1: 新文件 → 注入 YAML frontmatter
                 from core.memory.yaml_handler import YamlFrontmatter
                 fm_metadata = {"type": type, "source": "agent", "tags": []}
-                if id_field:
-                    fm_metadata["id"] = id_field
                 full_content = YamlFrontmatter.inject(entry, fm_metadata)
                 file_path.write_text(full_content, encoding="utf-8")
             else:
@@ -424,7 +403,7 @@ class MemoryTool(BaseTool):
         else:
             logger.warning("[MEMORY_DEBUG] MEMORY.md 不存在！memory_dir=%s", memory_dir)
 
-        return {"status": "ok", "result": {"file": f"{title}.md", "added": entry.strip()}}
+        return {"status": "ok", "result": {"id": title, "file": f"{title}.md", "added": entry.strip()}}
 
     async def _read_memory(
         self,

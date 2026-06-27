@@ -98,10 +98,10 @@ class TaskManager:
         Returns:
             {"status": "ok", "result": {"id": "...", "title": "..."}}
         """
-        # 生成短 ID：8 位十六进制（用当前时间的微秒部分 + 随机数）
-        _ts = datetime.now().strftime("%f")
-        _rand = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()[:4]
-        task_id = f"t{_ts}{_rand}"[:12]
+        # 时间戳+随机2位做ID和文件名
+        _ts = datetime.now().strftime("%y%m%d%H%M%S")
+        _rand = str(random.randint(10, 99))
+        task_id = f"{_ts}{_rand}"
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         body = content or title
         fm = {
