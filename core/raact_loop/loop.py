@@ -494,7 +494,7 @@ class RaActLoop:
                 _tc = "none"
             elif getattr(self._prompt_assembler, '_force_memory_tool', False):
                 # 触发记忆整理提醒 → 强制调 memory 工具，让 agent 实际执行整理
-                _tc = {"type": "function", "function": {"name": "memory"}}
+                _tc = "required"
                 self._memory_force_round = True  # 标记本轮强制过，检查 LLM 是否听令
                 self._prompt_assembler._force_memory_tool = False
                 logger.info("强制 tool_choice=memory（记忆整理周期触发）")
