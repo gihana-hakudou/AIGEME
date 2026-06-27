@@ -1,6 +1,5 @@
 # AIGEME 运行时数据
 .AIGEME/.data/
-.AIGEME/.skill/
 .AIGEME/mcp-servers/
 .AIGEME/plan_results/
 .AIGEME/local.yaml
