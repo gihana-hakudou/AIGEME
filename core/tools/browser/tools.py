@@ -42,15 +42,14 @@ def _import_helpers():
 class BrowserExecuteTool(BaseTool):
     """浏览器控制 — 执行 Python 代码操作浏览器（多步骤组合）
 
-    SKILL.md 文档：.AIGEME/.skill/browser-control/SKILL.md
-    可用函数列表请先通过 skill(use, 'browser-control') 查看。
+    Skill 文档提供完整函数列表，详见 .AIGEME/.skill/browser-control/SKILL.md。
     """
 
     name = "browser_execute"
     description = (
         "通过 Python 代码控制浏览器。传入 Python 代码执行浏览器操作，"
         "支持搜索、导航、截图、提取内容、点击等。\n"
-        "可用函数列表请先调用 skill(use, 'browser-control') 查看。\n"
+        "函数列表详见 .AIGEME/.skill/browser-control/SKILL.md。\n"
         "print() 输出结果，所有函数无需 import。\n"
         "下载文件请用 download_dir 变量指向的目录。"
     )
@@ -62,7 +61,7 @@ class BrowserExecuteTool(BaseTool):
             "code": {
                 "type": "string",
                 "description": (
-                    "Python 代码。可用函数列表请先通过 skill(use, 'browser-control') 查看。"
+                    "Python 代码。函数列表详见 .AIGEME/.skill/browser-control/SKILL.md。"
                 ),
             },
             "timeout": {
@@ -101,7 +100,29 @@ class BrowserExecuteTool(BaseTool):
 
         helpers = _import_helpers()
         globals_dict = helpers.copy()
-        globals_dict["__builtins__"] = __builtins__
+        # 限制内置函数，防止 prompt injection 通过 exec() 执行危险操作
+        globals_dict["__builtins__"] = {
+            'True': True, 'False': False, 'None': None,
+            'len': len, 'range': range, 'int': int, 'float': float,
+            'str': str, 'bool': bool, 'list': list, 'dict': dict,
+            'tuple': tuple, 'set': set, 'type': type,
+            'isinstance': isinstance, 'issubclass': issubclass,
+            'enumerate': enumerate, 'zip': zip, 'map': map, 'filter': filter,
+            'max': max, 'min': min, 'sum': sum, 'abs': abs,
+            'sorted': sorted, 'reversed': reversed,
+            'round': round, 'print': print, 'format': format,
+            'Exception': Exception, 'ValueError': ValueError,
+            'TypeError': TypeError, 'KeyError': KeyError,
+            'IndexError': IndexError, 'RuntimeError': RuntimeError,
+            'StopIteration': StopIteration, 'StopAsyncIteration': StopAsyncIteration,
+            'bytes': bytes, 'bytearray': bytearray, 'memoryview': memoryview,
+            'iter': iter, 'next': next, 'id': id, 'hash': hash,
+            'any': any, 'all': all, 'callable': callable,
+            'hasattr': hasattr,  # 限制 hasattr（配合 helpers 使用）
+            'ord': ord, 'chr': chr, 'hex': hex, 'oct': oct, 'bin': bin,
+            'repr': repr, 'ascii': ascii,
+            'input': input,  # 允许输入（在 exec 中不常使用但无害）
+        }
         globals_dict["capture_screenshot"] = _tracked_ss
         globals_dict["download_dir"] = str(_download_dir)
 

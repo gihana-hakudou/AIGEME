@@ -493,6 +493,17 @@ class RaActLoop:
                     pass
                 logger.error("Instructor 调用失败 [%s]: %s\n%s", err_type, err_str, _tb.format_exc())
 
+                # ── 多模态降级检测：如果 API 不支持图片，移除图片后重试 ──
+                if _multimodal_retries < MAX_MULTIMODAL_RETRIES and _is_multimodal_error(e):
+                    if _strip_images_from_messages(messages):
+                        _multimodal_retries += 1
+                        logger.info(
+                            "检测到 API 不支持多模态，已移除图片消息，第 %d/%d 次重试",
+                            _multimodal_retries, MAX_MULTIMODAL_RETRIES,
+                        )
+                        continue  # 重试当前 round
+                    logger.info("多模态错误但未找到图片消息，不重试")
+
                 # 生成用户可读的错误描述
                 # 常见错误类型映射
                 if "AuthenticationError" in err_type or "401" in err_str or "invalid_api_key" in err_lower:

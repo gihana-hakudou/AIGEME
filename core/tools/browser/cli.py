@@ -13,9 +13,19 @@ Usage:
     python -m core.tools.browser.cli capture_screenshot
     python -m core.tools.browser.cli list_tabs
     python -m core.tools.browser.cli wait 1.5
+    python -m core.tools.browser.cli wait_for_load
+    python -m core.tools.browser.cli wait_for_element "#my-button"
     python -m core.tools.browser.cli click_at_xy 100 200
     python -m core.tools.browser.cli fill_input "#search" "hello"
+    python -m core.tools.browser.cli type_text "hello world"
     python -m core.tools.browser.cli press_key Enter
+    python -m core.tools.browser.cli dispatch_key "#search" Enter
+    python -m core.tools.browser.cli scroll 0 0 --dy -300
+    python -m core.tools.browser.cli switch_tab targetId
+    python -m core.tools.browser.cli new_tab https://example.com
+    python -m core.tools.browser.cli back
+    python -m core.tools.browser.cli forward
+    python -m core.tools.browser.cli handle_dialog true
 
     # Script mode
     python -m core.tools.browser.cli script my_task.py
