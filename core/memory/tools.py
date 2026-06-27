@@ -184,7 +184,7 @@ class MemoryTool(BaseTool):
             },
             "id": {
                 "type": "string",
-                "description": "任务ID（add时自动生成无需填），task read/done/cancel 时必填",
+                "description": "记忆/任务标识。memory add 时可选（不填自动用内容首段），read/del/edit 时必填；task done/cancel/read 时必填",
             },
         },
         "required": ["operation"],
@@ -193,7 +193,6 @@ class MemoryTool(BaseTool):
     async def execute(  # type: ignore[override]
         self,
         operation: str,
-        title: str | None = None,
         content: str | None = None,
         type: str | None = None,
         query: str | None = None,
@@ -218,15 +217,18 @@ class MemoryTool(BaseTool):
         index = MemoryIndex(memory_dir)
 
         if operation == "add":
-            if not title or not content or not type:
+            _mem_id = id or content or ""
+            if not _mem_id or not type:
                 return {
                     "status": "error",
-                    "error": "add 操作需要 title, content, type 参数",
+                    "error": "add 操作需要 content（内容）和 type（类型）参数",
                 }
-            return await self._add_memory(memory_dir, index, title, content, type, importance)
+            # id 做文件名（截断避免过长），content 做正文
+            _filename = (_mem_id[:40] if len(_mem_id) > 40 else _mem_id).strip()
+            return await self._add_memory(memory_dir, index, _filename, content or _mem_id, type, importance)
 
         if operation == "read":
-            _read_id = id or title or ""
+            _read_id = id or ""
             if not _read_id:
                 return {"status": "error", "error": "read 操作需要 id 参数"}
             return await self._read_memory(memory_dir, index, _read_id)
@@ -240,13 +242,13 @@ class MemoryTool(BaseTool):
             return await self._list_memories(memory_dir, index, include_all)
 
         if operation == "del":
-            _del_id = id or title or ""
+            _del_id = id or ""
             if not _del_id:
                 return {"status": "error", "error": "del 操作需要 id 参数"}
             return await self._del_memory(memory_dir, index, _del_id)
 
         if operation == "edit":
-            _edit_id = id or title or ""
+            _edit_id = id or ""
             if not _edit_id or not old_string:
                 return {
                     "status": "error",
