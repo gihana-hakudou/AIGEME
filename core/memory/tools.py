@@ -3,6 +3,7 @@
 import asyncio
 import logging
 import re
+import uuid
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -18,6 +19,29 @@ jieba.initialize()
 
 # 记忆存储目录
 MEMORY_BASE = Path(__file__).parent.parent.parent / ".AIGEME" / ".data"
+
+
+def _resolve_memory_file(memory_dir: Path, mem_id: str) -> Path | None:
+    """按 id 查找记忆文件
+
+    优先按文件名匹配，失败则扫描所有文件匹配 frontmatter 中的 id 字段
+    """
+    direct = memory_dir / f"{mem_id}.md"
+    if direct.exists():
+        return direct
+    for f in memory_dir.glob("*.md"):
+        try:
+            content = f.read_text("utf-8")
+            if content.startswith("---\n"):
+                parts = content.split("---\n", 2)
+                if len(parts) >= 3:
+                    import yaml
+                    fm = yaml.safe_load(parts[1])
+                    if isinstance(fm, dict) and fm.get("id") == mem_id:
+                        return f
+        except Exception:
+            continue
+    return None
 
 
 def _get_memory_dir(user_id: str = "local", char_id: str = "ario") -> Path:
@@ -223,15 +247,18 @@ class MemoryTool(BaseTool):
                     "status": "error",
                     "error": "add 操作需要 content（内容）和 type（类型）参数",
                 }
-            # id 做文件名（截断避免过长），content 做正文
-            _filename = (_mem_id[:40] if len(_mem_id) > 40 else _mem_id).strip()
-            return await self._add_memory(memory_dir, index, _filename, content or _mem_id, type, importance)
+            # UUID 做文件名（安全），id 存 frontmatter 供检索
+            _uuid = str(uuid.uuid4())
+            return await self._add_memory(memory_dir, index, _uuid, content or _mem_id, type, importance, id_field=_mem_id)
 
         if operation == "read":
             _read_id = id or ""
             if not _read_id:
                 return {"status": "error", "error": "read 操作需要 id 参数"}
-            return await self._read_memory(memory_dir, index, _read_id)
+            _file = _resolve_memory_file(memory_dir, _read_id)
+            if not _file:
+                return {"status": "error", "error": f"未找到 id='{_read_id}' 的记忆"}
+            return await self._read_memory(memory_dir, index, _file.stem)
 
         if operation == "search":
             if not query:
@@ -245,7 +272,10 @@ class MemoryTool(BaseTool):
             _del_id = id or ""
             if not _del_id:
                 return {"status": "error", "error": "del 操作需要 id 参数"}
-            return await self._del_memory(memory_dir, index, _del_id)
+            _file = _resolve_memory_file(memory_dir, _del_id)
+            if not _file:
+                return {"status": "error", "error": f"未找到 id='{_del_id}' 的记忆"}
+            return await self._del_memory(memory_dir, index, _file.stem)
 
         if operation == "edit":
             _edit_id = id or ""
@@ -256,7 +286,10 @@ class MemoryTool(BaseTool):
                 }
             if new_string is None:
                 new_string = ""
-            return await self._edit_memory(memory_dir, index, _edit_id, old_string, new_string)
+            _file = _resolve_memory_file(memory_dir, _edit_id)
+            if not _file:
+                return {"status": "error", "error": f"未找到 id='{_edit_id}' 的记忆"}
+            return await self._edit_memory(memory_dir, index, _file.stem, old_string, new_string)
 
         # ── Brain Tools ───────────────────────────────────────
 
@@ -321,6 +354,7 @@ class MemoryTool(BaseTool):
         content: str,
         type: str,
         importance: int,
+        id_field: str | None = None,
     ) -> dict:
         """新增记忆
 
@@ -351,6 +385,8 @@ class MemoryTool(BaseTool):
                 # ★ B1: 新文件 → 注入 YAML frontmatter
                 from core.memory.yaml_handler import YamlFrontmatter
                 fm_metadata = {"type": type, "source": "agent", "tags": []}
+                if id_field:
+                    fm_metadata["id"] = id_field
                 full_content = YamlFrontmatter.inject(entry, fm_metadata)
                 file_path.write_text(full_content, encoding="utf-8")
             else:
