@@ -290,6 +290,7 @@ class RaActLoop:
         self._pending_confirm_ref = None
         self._confirm_result_ref = None
         self._reset_confirm_callback = None
+        self._memory_force_round = False  # 本轮是否强制 tool_choice=memory
 
         # 记忆去重追踪器（按需检索 + 去重注入）
         self._memory_tracker = MemoryContextTracker()
@@ -494,6 +495,7 @@ class RaActLoop:
             elif getattr(self._prompt_assembler, '_force_memory_tool', False):
                 # 触发记忆整理提醒 → 强制调 memory 工具，让 agent 实际执行整理
                 _tc = {"type": "function", "function": {"name": "memory"}}
+                self._memory_force_round = True  # 标记本轮强制过，检查 LLM 是否听令
                 self._prompt_assembler._force_memory_tool = False
                 logger.info("强制 tool_choice=memory（记忆整理周期触发）")
 
@@ -814,9 +816,19 @@ class RaActLoop:
                 # （agent 既然主动写了记忆，就不需要再提醒了）
                 if any(tc.name == "memory" for tc, _ in zip(response.tool_calls, parallel_results)):
                     self._prompt_assembler.reset_organize_counter()
+                    self._memory_force_round = False  # LLM 听令了，取消强制标记
 
             else:
-                # 无工具调用 → 结束循环
+                # 无工具调用 → 检查是否因强制 memory 被无视
+                if self._memory_force_round:
+                    self._memory_force_round = False
+                    self._prompt_assembler._force_memory_tool = True  # 下轮继续强制
+                    logger.info("[TOOL_DEBUG] 强制 memory 被 LLM 无视，下轮继续强制")
+                    # 注入一条 user 消息提醒 LLM 必须调 memory
+                    messages.append({"role": "user", "content": "Periodic memory review is needed. You must call the memory tool now."})
+                    continue  # 不退出，走下一轮强制调用
+
+                # 正常无工具调用 → 结束循环
                 final_say = "\n".join(accumulated_say) if accumulated_say else (response.say or "")
                 logger.info("[TOOL_DEBUG] 模型无工具调用，结束循环。final_say=%s", final_say[:80] if final_say else "None")
                 # 将最终回复加入 messages，确保被 round_messages 捕获和持久化
