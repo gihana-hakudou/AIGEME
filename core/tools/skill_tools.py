@@ -58,7 +58,7 @@ class SkillManager:
                     if n == name:
                         content = (item / "SKILL.md").read_text(encoding="utf-8")
                         return {"status": "ok", "result": {"name": name, "content": content}}
-        return {"status": "error", "error": f"Skill '{name}' not found"}
+        return {"status": "error", "error": f"未找到技能: {name}"}
 
     def list_all(self) -> list[dict]:
         """列出所有可用技能"""

@@ -34,7 +34,7 @@ class SystemTool(BaseTool):
                     "platform": platform.platform(),
                     "python_version": sys.version,
                     "python_path": sys.executable,
-                    "cwd": str(Path.cwd()),
+                    "current_directory": str(Path.cwd()),
                 },
             }
         return {"status": "error", "error": f"不支持的模式: {mode}"}

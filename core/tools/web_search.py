@@ -102,7 +102,6 @@ class WebSearchTool(BaseTool):
             return {
                 "status": "error",
                 "error": "Tavily API Key 未配置，请在 .AIGEME/local.yaml 中设置 web_search.api_key 或 api_keys",
-                "error_type": "config_error",
             }
 
         url = "https://api.tavily.com/search"
@@ -147,7 +146,6 @@ class WebSearchTool(BaseTool):
                         "result": {
                             "query": query,
                             "results": results,
-                            "source": "tavily",
                         },
                         "output_type": "json",
                     }
@@ -162,7 +160,6 @@ class WebSearchTool(BaseTool):
                 return {
                     "status": "error",
                     "error": "搜索服务超时，请稍后重试",
-                    "error_type": "execution_error",
                 }
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429:
@@ -172,19 +169,16 @@ class WebSearchTool(BaseTool):
                 return {
                     "status": "error",
                     "error": f"搜索服务错误: HTTP {e.response.status_code}",
-                    "error_type": "execution_error",
                 }
             except Exception as e:
                 return {
                     "status": "error",
                     "error": f"搜索服务不可用: {e!s}",
-                    "error_type": "execution_error",
                 }
 
         return {
             "status": "error",
             "error": "所有 Tavily API Key 均已达到速率限制，请稍后重试",
-            "error_type": "rate_limited",
         }
 
 

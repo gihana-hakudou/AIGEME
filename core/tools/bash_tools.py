@@ -336,7 +336,6 @@ class BashTool(BaseTool):
                     "result": {
                         "stdout": stdout[-8000:],
                         "stderr": stderr[-4000:],
-                        "returncode": result.returncode,
                     },
                 }
 
@@ -345,7 +344,6 @@ class BashTool(BaseTool):
                 "result": {
                     "stdout": stdout[-8000:],
                     "stderr": stderr[-4000:],
-                    "returncode": result.returncode,
                 },
             }
         except subprocess.TimeoutExpired:

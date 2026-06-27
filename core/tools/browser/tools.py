@@ -186,7 +186,6 @@ class BrowserExecuteTool(BaseTool):
             return {
                 "status": "error",
                 "error": f"代码执行超时（{timeout}s），请简化操作或分步执行",
-                "error_type": "execution_error",
             }
         except Exception as e:
             tb = traceback.format_exc()
@@ -222,7 +221,6 @@ class BrowserExecuteTool(BaseTool):
             return {
                 "status": "error",
                 "error": error_info,
-                "error_type": "execution_error",
             }
 
 
@@ -285,7 +283,6 @@ class BrowserSearchTool(BaseTool):
                 "results": links[:max_results] if links and len(links) > 0 else [],
                 "raw_text": (raw or "")[:3000],
                 "raw_text_length": len(raw or ""),
-                "source": "baidu",
             }
 
             return {
@@ -294,7 +291,7 @@ class BrowserSearchTool(BaseTool):
                 "output_type": "json",
             }
         except Exception as e:
-            return {"status": "error", "error": f"搜索失败: {e!s}", "error_type": "execution_error"}
+            return {"status": "error", "error": f"搜索失败: {e!s}"}
 
 
 class BrowserExtractTool(BaseTool):
@@ -330,4 +327,4 @@ class BrowserExtractTool(BaseTool):
                 "output_type": "json",
             }
         except Exception as e:
-            return {"status": "error", "error": f"提取失败: {e!s}", "error_type": "execution_error"}
+            return {"status": "error", "error": f"提取失败: {e!s}"}
