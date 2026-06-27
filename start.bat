@@ -6,9 +6,13 @@ set "SCRIPT_DIR=%~dp0"
 set "PYTHON=!SCRIPT_DIR!venv\Scripts\python.exe"
 
 if not exist "!PYTHON!" (
-    echo [ERROR] Runtime not found
-    pause
-    exit /b 1
+    echo [INFO] First run detected. Setting up environment...
+    call "!SCRIPT_DIR!setup.bat"
+    if not exist "!PYTHON!" (
+        echo [ERROR] Environment setup failed. Please run setup.bat manually.
+        pause
+        exit /b 1
+    )
 )
 
 echo.

@@ -1,2 +1,0 @@
-﻿<Response [404]>
-Downloading Model from https://www.modelscope.cn to directory: C:\Users\ADMINI~1\AppData\Local\Temp\tmpfj1ezdmr\temp_dir
