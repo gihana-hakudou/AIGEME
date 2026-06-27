@@ -91,7 +91,7 @@ class BrowserExecuteTool(BaseTool):
         # 包装 capture_screenshot 以记录截图路径并重定向到 tmp 目录
         from core.tools.browser import helpers as h
         _orig_ss = h.capture_screenshot
-        def _tracked_ss(path=None, full=False, max_dim=None):
+        def _tracked_ss(path=None, full=False, max_dim=1280):
             if path is None:
                 path = str(_ss_dir / f"browser_ss_{time.strftime('%Y%m%d_%H%M%S')}.png")
             result = _orig_ss(path, full=full, max_dim=max_dim)
@@ -151,7 +151,7 @@ class BrowserExecuteTool(BaseTool):
                 "truncated": len(stdout) > 10000 or len(stderr) > 2000,
             }
 
-            # ── 截图处理：读取尺寸并转为 data_url 供多模态注入 ──
+            # ── 截图处理：转为 data_url 供多模态注入（_tracked_ss 已缩小到 1280px）──
             if _taken_screenshots:
                 try:
                     from PIL import Image as PILImage
