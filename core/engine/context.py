@@ -304,8 +304,7 @@ class PromptAssembler:
         if not entries:
             return None
 
-        # Sort by the latest date (max of updated/referenced), descending
-        from datetime import datetime
+        from datetime import datetime, timedelta
 
         def _parse_date(d: str) -> datetime:
             if not d or d == "-":
@@ -317,12 +316,35 @@ class PromptAssembler:
                     continue
             return datetime.min
 
+        now = datetime.now()
+
         for e in entries:
             d1 = _parse_date(e["updated"])
             d2 = _parse_date(e["referenced"])
             e["_sort_date"] = max(d1, d2)
 
-        entries.sort(key=lambda e: e["_sort_date"], reverse=True)
+            # 读取文件的 importance
+            imp = 3  # 默认
+            fpath = self._memory_dir / f"{e['name']}.md"
+            if fpath.exists():
+                try:
+                    raw = fpath.read_text("utf-8")
+                    if raw.startswith("---\n"):
+                        import yaml
+                        _, fm_str, _ = raw.split("---\n", 2)
+                        fm = yaml.safe_load(fm_str)
+                        if isinstance(fm, dict) and "importance" in fm:
+                            imp = int(fm["importance"])
+                except Exception:
+                    pass
+
+            # 复合分数：重要度(0-1) × 0.6 + 新鲜度(0-1) × 0.4
+            imp_score = (imp - 1) / 4  # 1→0, 5→1
+            days_since = max(0, (now - e["_sort_date"]).days) if e["_sort_date"] != datetime.min else 999
+            recency_score = max(0, 1 - days_since / 30)  # 30天内新鲜
+            e["_sort_score"] = round(imp_score * 0.6 + recency_score * 0.4, 2)
+
+        entries.sort(key=lambda e: e["_sort_score"], reverse=True)
         entries = entries[:max_entries]
 
         # Format as compact markdown
