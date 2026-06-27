@@ -208,6 +208,8 @@ class PromptAssembler:
         # 记忆整理提醒（轮次触发，但 agent 主动用过记忆工具会外部重置）
         self._total_rounds_since_organize += 1
         self._save_counter()
+        logger.info("[ORGANIZE] round=%d, interval=%d, force=%s",
+            self._total_rounds_since_organize, self._organize_interval, self._force_memory_tool)
         if self._total_rounds_since_organize >= self._organize_interval:
             parts.append(
                 "Periodic reminder: review long-term memory — add new info, "
