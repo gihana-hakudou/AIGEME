@@ -157,6 +157,9 @@ class MemoryContextTracker:
                             content = file_path.read_text("utf-8")
                             fm, _ = YamlFrontmatter.extract_io(content)
                             r["id"] = fm.get("id", "") if fm else ""
+                            # 重要度加成：importance 5 → +0.4, 1 → +0.0
+                            imp = int(fm.get("importance", 3)) if fm else 3
+                            r["relevance"] = r.get("relevance", 0) + (imp - 1) * 0.1
                         results.append(r)
             except AttributeError:
                 logger.debug("[MEMTRACK] _graph_search_memory 不可用，跳过图谱检索")
@@ -177,16 +180,18 @@ class MemoryContextTracker:
                     file_path = memory_dir / fname
                     preview = ""
                     r_id = ""
+                    imp = 3
                     if file_path.exists():
                         content = file_path.read_text("utf-8")
                         fm, body = YamlFrontmatter.extract_io(content)
                         r_id = fm.get("id", "") if fm else ""
                         preview = body.strip()[:100] if body.strip() else "(空)"
+                        imp = int(fm.get("importance", 3)) if fm else 3
                     results.append({
                         "file": fname,
                         "id": r_id,
                         "path": "",
-                        "relevance": 0.3,
+                        "relevance": 0.3 + (imp - 1) * 0.1,
                         "preview": preview or r.get("preview", ""),
                     })
         except Exception:
