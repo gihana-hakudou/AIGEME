@@ -43,6 +43,7 @@ class PromptAssembler:
         self._memory_dir = memory_dir
         self._organize_interval = organize_interval
         self._total_rounds_since_organize = self._load_counter()
+        self._force_memory_tool = False  # 组织提醒触发时，强制模型调 memory 工具
         self._cached_system_prompt: str | None = None
 
     # ── 持久化轮次计数器 ──────────────────────────
@@ -215,6 +216,7 @@ class PromptAssembler:
             )
             self._total_rounds_since_organize = 0
             self._save_counter()
+            self._force_memory_tool = True  # 标记本轮需要强制调 memory 工具
 
         # ⏰ 待办事项到期提醒
         if self._memory_dir:

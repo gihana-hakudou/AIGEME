@@ -236,7 +236,7 @@ class InstructorClient:
             temperature=self._temperature,
             max_tokens=self._max_tokens,
             tools=openai_tools,
-            tool_choice=tool_choice or "auto",
+            tool_choice=tool_choice if tool_choice is not None else "auto",
             **kwargs,
         )
 

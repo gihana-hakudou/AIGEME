@@ -491,6 +491,16 @@ class RaActLoop:
                 messages.append(_summary_msg)
                 logger.info("RaAct 最后一轮，注入总结提示词 + tool_choice=none")
 
+            # 计算本轮 tool_choice
+            _tc = None
+            if _last_round:
+                _tc = "none"
+            elif getattr(self._prompt_assembler, '_force_memory_tool', False):
+                # 触发记忆整理提醒 → 强制调 memory 工具，让 agent 实际执行整理
+                _tc = {"type": "function", "function": {"name": "memory"}}
+                self._prompt_assembler._force_memory_tool = False
+                logger.info("强制 tool_choice=memory（记忆整理周期触发）")
+
             # 调用 Instructor（流式推送 thinking/speech 到前端）
             response: RaActResponse | None = None
             try:
@@ -499,7 +509,7 @@ class RaActLoop:
                     send_block=send_block,
                     tools=self._registry.schemas,
                     cancelled_check=lambda: self._cancelled,
-                    tool_choice="none" if _last_round else None,
+                    tool_choice=_tc,
                 )
             except ContextWindowExceededError as e:
                 logger.warning("上下文窗口超限: %s，强制丢弃旧消息后重试", e)
