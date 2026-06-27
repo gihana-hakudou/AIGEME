@@ -108,13 +108,9 @@ class MemoryTool(BaseTool):
                 "enum": ["add", "read", "search", "list", "del", "edit", "link", "audit", "merge", "prune", "graph_search", "task"],
                 "description": "add=新增 / read=读取全文 / search=搜索关键词 / list=浏览索引 / del=删除文件 / edit=编辑文件 / link=建立链接 / audit=扫描审计 / merge=合并文件 / prune=清理孤立文件 / graph_search=图谱扩散检索",
             },
-            "title": {
-                "type": "string",
-                "description": "记忆标题（文件名不含 .md）。add/read/del/edit 时必填",
-            },
             "content": {
                 "type": "string",
-                "description": "记忆内容。add/edit 时使用；task add 时作为提醒内容（必填）",
+                "description": "记忆或提醒的内容。add/edit/task add 时使用",
             },
             "type": {
                 "type": "string",
@@ -179,16 +175,16 @@ class MemoryTool(BaseTool):
             },
             "trigger_at": {
                 "type": "string",
-                "description": "触发时间 \"HH:MM\" 或 \"YYYY-MM-DD HH:MM\" 或 \"周3 10:00\"（task add 时必填）",
+                "description": "触发时间 \"HH:MM\" 或 \"YYYY-MM-DD HH:MM\" 或 \"周3 10:00\" 或 \"15 10:00\"（task add 时必填）",
             },
             "repeat": {
                 "type": "string",
                 "enum": ["daily", "weekly", "monthly"],
-                "description": "重复模式: daily=每天 / weekly=每周 / monthly=每月（task add 可选）",
+                "description": "重复模式: daily=每天 / weekly=每周 / monthly=每月（task add 可选，trigger_at设了周几/几日则自动识别）",
             },
             "id": {
                 "type": "string",
-                "description": "任务短ID（自动生成），task done/cancel/read 时必填",
+                "description": "任务ID（add时自动生成无需填），task read/done/cancel 时必填",
             },
         },
         "required": ["operation"],
@@ -230,9 +226,10 @@ class MemoryTool(BaseTool):
             return await self._add_memory(memory_dir, index, title, content, type, importance)
 
         if operation == "read":
-            if not title:
-                return {"status": "error", "error": "read 操作需要 title 参数"}
-            return await self._read_memory(memory_dir, index, title)
+            _read_id = id or title or ""
+            if not _read_id:
+                return {"status": "error", "error": "read 操作需要 id 参数"}
+            return await self._read_memory(memory_dir, index, _read_id)
 
         if operation == "search":
             if not query:
@@ -243,19 +240,21 @@ class MemoryTool(BaseTool):
             return await self._list_memories(memory_dir, index, include_all)
 
         if operation == "del":
-            if not title:
-                return {"status": "error", "error": "del 操作需要 title 参数"}
-            return await self._del_memory(memory_dir, index, title)
+            _del_id = id or title or ""
+            if not _del_id:
+                return {"status": "error", "error": "del 操作需要 id 参数"}
+            return await self._del_memory(memory_dir, index, _del_id)
 
         if operation == "edit":
-            if not title or not old_string:
+            _edit_id = id or title or ""
+            if not _edit_id or not old_string:
                 return {
                     "status": "error",
-                    "error": "edit 操作需要 title, old_string 参数",
+                    "error": "edit 操作需要 id, old_string 参数",
                 }
             if new_string is None:
                 new_string = ""
-            return await self._edit_memory(memory_dir, index, title, old_string, new_string)
+            return await self._edit_memory(memory_dir, index, _edit_id, old_string, new_string)
 
         # ── Brain Tools ───────────────────────────────────────
 
@@ -281,27 +280,27 @@ class MemoryTool(BaseTool):
             from core.memory.reminder import TaskManager
             tm = TaskManager(memory_dir)
             if task_action == "add":
-                _task_title = content or id or title or ""
+                _task_title = content or ""
                 if not _task_title or not trigger_at:
                     return {"status": "error", "error": "task add 需要 content（提醒内容）和 trigger_at 参数"}
                 return await tm.add(title=_task_title, trigger_at=trigger_at, content=_task_title, repeat=repeat)
             if task_action == "done":
-                _task_id = id or title
+                _task_id = id or ""
                 if not _task_id:
-                    return {"status": "error", "error": "task done 需要 id（任务ID）参数"}
+                    return {"status": "error", "error": "task done 需要 id 参数"}
                 return await tm.done(_task_id)
             if task_action == "cancel":
-                _task_id = id or title
+                _task_id = id or ""
                 if not _task_id:
-                    return {"status": "error", "error": "task cancel 需要 id（任务ID）参数"}
+                    return {"status": "error", "error": "task cancel 需要 id 参数"}
                 return await tm.cancel(_task_id)
             if task_action == "list":
                 status_filter = kwargs.get("status", "")
                 return await tm.list_tasks(status_filter)
             if task_action == "read":
-                _task_id = id or title
+                _task_id = id or ""
                 if not _task_id:
-                    return {"status": "error", "error": "task read 需要 id（任务ID）参数"}
+                    return {"status": "error", "error": "task read 需要 id 参数"}
                 return await tm.read_task(_task_id)
             return {"status": "error", "error": f"不支持的任务操作: {task_action}"}
 

@@ -294,10 +294,11 @@ class TaskManager:
     def _is_due(trigger_at: str, now: datetime) -> bool:
         """判断是否到期
 
-        支持三种格式：
-        - "HH:MM"         → 每日时间点
+        支持格式：
+        - "HH:MM"            → 每日时间点
         - "YYYY-MM-DD HH:MM" → 绝对时间点
-        - "周N HH:MM"     → 每周周N（如"周3 10:00"）或"星期一 HH:MM"
+        - "周N HH:MM"        → 每周周N（如"周3 10:00"）
+        - "N HH:MM"          → 每月第N日（如"15 10:00"每月15号）
         """
         trigger = trigger_at.strip()
         if not trigger:
@@ -320,6 +321,19 @@ class TaskManager:
                     today_target = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
                     return now >= today_target
                 return False  # 还没到那天
+            except ValueError:
+                pass
+
+        # 尝试解析 "N HH:MM"（每月第N日，如"15 10:00"）
+        day_match = re.match(r'^(\d{1,2})\s+(\d{1,2}:\d{2})$', trigger)
+        if day_match:
+            day_str = day_match.group(1)
+            time_str = day_match.group(2)
+            target_day = int(day_str)
+            try:
+                t = datetime.strptime(time_str, "%H:%M")
+                today_target = now.replace(day=target_day, hour=t.hour, minute=t.minute, second=0, microsecond=0)
+                return now >= today_target
             except ValueError:
                 pass
 
@@ -359,6 +373,19 @@ class TaskManager:
                 t = datetime.strptime(time_str, "%H:%M")
                 next_time = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
                 while next_time <= now or next_time.weekday() != target_dow:
+                    next_time += timedelta(days=1)
+                return next_time.strftime("%Y-%m-%d %H:%M")
+            except ValueError:
+                pass
+        # 检测每月N号格式："N HH:MM"
+        day_match = re.match(r'^(\d{1,2})\s+(\d{1,2}:\d{2})$', trigger_at)
+        if day_match:
+            time_str = day_match.group(2)
+            target_day = int(day_match.group(1))
+            try:
+                t = datetime.strptime(time_str, "%H:%M")
+                next_time = now.replace(hour=t.hour, minute=t.minute, second=0, microsecond=0)
+                while next_time <= now or next_time.day != target_day:
                     next_time += timedelta(days=1)
                 return next_time.strftime("%Y-%m-%d %H:%M")
             except ValueError:
