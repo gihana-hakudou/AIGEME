@@ -68,11 +68,13 @@ const AIGEME_UI = {
         var actualFile = exprMap && exprMap[expr] ? exprMap[expr] : expr + '.png';
         // 取文件名不含 .png 的部分作为 URL 路径
         var imageName = actualFile.replace(/\.png$/i, '');
-        var src = '/tachi-e/' + charId + '/' + imageName + '.png';
+        // 优先使用 config.yaml 中的 tachie_dir，降级到 tachi-e/<charId>
+        var tachieDir = (AIGEME.chat.currentChar.tachie_dir || ('tachi-e/' + charId)).replace(/\\/g, '/').replace(/\/$/, '');
+        var src = '/' + tachieDir + '/' + imageName + '.png';
 
         // 默认表情文件名（用于 onerror 回退）
         var defaultFile = exprMap && exprMap['default'] ? exprMap['default'].replace(/\.png$/i, '') : 'default';
-        var defaultSrc = '/tachi-e/' + charId + '/' + defaultFile + '.png';
+        var defaultSrc = '/' + tachieDir + '/' + defaultFile + '.png';
 
         // 设计稿元素：sprite-img（按角色动态加载）
         if (spriteImg) {

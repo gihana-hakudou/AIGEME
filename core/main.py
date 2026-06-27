@@ -740,11 +740,48 @@ def create_app() -> FastAPI:
         except Exception as e:
             return {"status": "error", "message": f"保存失败: {e!s}"}
 
-    # 根路径返回前端页面
-    from fastapi.responses import FileResponse
+    # 根路径返回前端页面（动态注入内容哈希，避免浏览器长期缓存旧 JS/CSS）
+    import hashlib
+    import re as _re
+    from fastapi.responses import HTMLResponse
+
+    def _file_hash(path: Path, length: int = 8) -> str:
+        """计算文件内容的 md5 短串（8位），文件不存在则返回 '0'"""
+        try:
+            data = path.read_bytes()
+            return hashlib.md5(data).hexdigest()[:length]
+        except OSError:
+            return "0"
+
+    def _inject_version(html: str, static_root: Path) -> str:
+        """将 /static/... 的 JS/CSS 引用替换为带 ?v=<hash> 的版本"""
+        def _replace(m: _re.Match) -> str:
+            tag_prefix = m.group(1)   # src=" 或 href="
+            url = m.group(2)           # /static/js/app.js
+            tag_suffix = m.group(3)   # "
+            # 只处理 /static/ 前缀的本地资源
+            if not url.startswith("/static/"):
+                return m.group(0)
+            rel = url[len("/static/"):]
+            file_path = static_root / rel
+            h = _file_hash(file_path)
+            return f'{tag_prefix}{url}?v={h}{tag_suffix}'
+
+        # 匹配 src="/static/..." 和 href="/static/..."
+        pattern = r'((?:src|href)="?)(/static/[^"?\s]+)("?)'
+        return _re.sub(pattern, _replace, html)
 
     @app.get("/")
-    async def index() -> FileResponse:
-        return FileResponse(str(frontend_dir / "index.html"))
+    async def index() -> HTMLResponse:
+        html_path = frontend_dir / "index.html"
+        html = html_path.read_text(encoding="utf-8")
+        html = _inject_version(html, frontend_dir)
+        return HTMLResponse(
+            content=html,
+            headers={
+                # index.html 本身：每次都向服务端验证，不允许直接用旧缓存
+                "Cache-Control": "no-cache, must-revalidate",
+            },
+        )
 
     return app

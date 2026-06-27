@@ -152,7 +152,8 @@ const AIGEME = {
         this.chat.currentChar = {
             id: charData.id,
             name: charData.name,
-            expressions: charData.expressions || null
+            expressions: charData.expressions || null,
+            tachie_dir: charData.tachie_dir || ('tachi-e/' + charData.id)
         };
 
         // 设置角色名到设计稿的顶栏

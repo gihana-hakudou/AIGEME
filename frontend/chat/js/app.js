@@ -442,18 +442,6 @@
             var apiBase = settingApiBase.value.trim();
             if (!providerId || !apiBase) return;
 
-            // 云服务商需要 API Key
-            if (isCloudEndpoint(apiBase) && !apiKeyConfigured) {
-                btnFetchModels.disabled = true;
-                btnFetchModels.textContent = '🔑 请先配置 API Key';
-                if (modelPickHint) modelPickHint.textContent = '⚠️ 云服务商需要先填写 API Key 才能获取模型列表';
-                setTimeout(function() {
-                    btnFetchModels.textContent = '📋 获取列表';
-                    btnFetchModels.disabled = false;
-                }, 3000);
-                return;
-            }
-
             // 清空模型名和 datalist，避免旧值干扰下拉筛选
             if (settingModelName) settingModelName.value = '';
             modelNameList.innerHTML = '';
@@ -464,8 +452,11 @@
             try {
                 var url = '/api/llm-providers/' + encodeURIComponent(providerId) + '/models'
                     + '?api_base=' + encodeURIComponent(apiBase);
-                // 如果用户已配置 API Key，也传过去让后端尝试认证
-                // 明文 key 不在前端存，让后端用环境变量或 saved key 自行处理
+                // 用户在输入框填了 key 就直接传给后端获取模型列表
+                // 这样做不用先保存设置就能拉列表，解决"要先选模型才能保存key，要key才能获取模型列表"的死锁
+                if (settingApiKey && settingApiKey.value.trim()) {
+                    url += '&api_key=' + encodeURIComponent(settingApiKey.value.trim());
+                }
                 var resp = await fetch(url);
                 var data = await resp.json();
                 var models = data.models || [];
