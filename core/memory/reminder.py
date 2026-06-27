@@ -71,22 +71,9 @@ class TaskManager:
     # ── 公开 API ────────────────────────────────────────────────
 
     def _resolve_task(self, task_id: str) -> Path | None:
-        """通过 UUID（文件名）或 title 查找任务文件
-
-        优先按文件名匹配，失败则扫描所有文件匹配 title 字段
-        """
+        """按文件名（即标题）查找任务"""
         direct = self._task_dir / f"{task_id}.md"
-        if direct.exists():
-            return direct
-        # 按 title 匹配
-        for f in self._task_dir.glob("*.md"):
-            try:
-                fm, _ = _load_yaml(f.read_text("utf-8"))
-                if fm and fm.get("title") == task_id:
-                    return f
-            except Exception:
-                continue
-        return None
+        return direct if direct.exists() else None
 
     async def add(
         self,
@@ -111,7 +98,8 @@ class TaskManager:
         Returns:
             {"status": "ok", "result": {"id": "...", "title": "..."}}
         """
-        task_id = str(uuid.uuid4())
+        # 直接用标题作为任务ID（文件名），不生成 UUID，agent 填什么就用什么
+        task_id = title.strip()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         body = content or title
         fm = {
