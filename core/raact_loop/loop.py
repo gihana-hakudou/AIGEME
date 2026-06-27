@@ -22,6 +22,45 @@ from core.memory.memory_tracker import MemoryContextTracker
 logger = logging.getLogger(__name__)
 
 MAX_RAACT_ROUNDS = 8
+MAX_MULTIMODAL_RETRIES = 1  # 多模态降级重试次数
+
+
+def _strip_images_from_messages(messages: list[dict]) -> bool:
+    """从 messages 中移除所有图片内容块。
+
+    当 LLM API 不支持多模态时调用此函数降级。遍历每条消息，
+    将其 content 中的 image_url 部分全部移除，保留纯文本。
+
+    Returns:
+        True 表示有图片被移除（messages 已被修改）
+    """
+    modified = False
+    for msg in messages:
+        content = msg.get("content")
+        if not isinstance(content, list):
+            continue
+        # 过滤掉 image_url 类型的内容块
+        text_parts = [p for p in content if p.get("type") != "image_url"]
+        if len(text_parts) < len(content):
+            modified = True
+            if not text_parts:
+                msg["content"] = "(图片已被移除，当前 API 不支持多模态)"
+            elif len(text_parts) == 1 and text_parts[0].get("type") == "text":
+                msg["content"] = text_parts[0].get("text", "")
+            else:
+                msg["content"] = text_parts
+    return modified
+
+
+def _is_multimodal_error(e: Exception) -> bool:
+    """判断错误是否因 LLM API 不支持多模态（图片输入）导致"""
+    err_str = str(e).lower()
+    return any(kw in err_str for kw in [
+        "image_url", "image input", "multimodal", "image is not",
+        "unsupported image", "image content", "image type",
+        "images are not supported", "does not support images",
+        "does not support multimodal",
+    ])
 
 
 def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
@@ -389,6 +428,9 @@ class RaActLoop:
 
         # 记录本轮所有工具交互（用于历史）
         tool_interactions: list[dict] = []
+
+        # 多模态降级重试计数器（跨 round 共享）
+        _multimodal_retries = 0
 
         for round_num in range(1, MAX_RAACT_ROUNDS + 1):
             # [检查点1] round 循环开始前

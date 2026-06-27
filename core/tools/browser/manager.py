@@ -33,26 +33,26 @@ def _ensure_chromium_installed() -> bool:
     """
     if any(_BROWSER_DIR.glob("chromium-*")):
         return True
-        logger.info("Patchright Chromium 未安装，正在自动下载（~150MB）到 %s ...", _BROWSER_DIR)
-        try:
-            env = os.environ.copy()
-            env["PLAYWRIGHT_BROWSERS_PATH"] = _PW_BROWSERS_PATH
-            subprocess.run(
-                [sys.executable, "-m", "patchright", "install", "chromium"],
-                check=True,
-                timeout=300,  # 5min 超时
-                env=env,
-            )
-            logger.info("Patchright Chromium 下载完成")
-            return True
-        except subprocess.TimeoutExpired:
-            logger.error("Chromium 下载超时（>5min），请检查网络")
-            return False
-        except subprocess.CalledProcessError as e:
-            logger.error(f"Chromium 下载失败: {e}")
-            return False
 
-    return True
+    # 自动安装
+    logger.info("Patchright Chromium 未安装，正在自动下载（~150MB）到 %s ...", _BROWSER_DIR)
+    try:
+        env = os.environ.copy()
+        env["PLAYWRIGHT_BROWSERS_PATH"] = _PW_BROWSERS_PATH
+        subprocess.run(
+            [sys.executable, "-m", "patchright", "install", "chromium"],
+            check=True,
+            timeout=300,  # 5min 超时
+            env=env,
+        )
+        logger.info("Patchright Chromium 下载完成")
+        return True
+    except subprocess.TimeoutExpired:
+        logger.error("Chromium 下载超时（>5min），请检查网络")
+        return False
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Chromium 下载失败: {e}")
+        return False
 
 
 class BrowserManager:

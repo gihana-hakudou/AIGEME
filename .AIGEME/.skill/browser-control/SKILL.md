@@ -22,7 +22,7 @@ wait_for_load()
 search_baidu("AI 2024")
 
 # 截图
-screenshot("page.png")
+capture_screenshot("page.png")
 
 # 提取内容
 text = extract_text()
@@ -43,19 +43,31 @@ print(get_page_title())
 
 ## 方式二：CLI script 模式（长流程，推荐）
 
-适合多步、可复用的操作。用 bash 调 `aigeme browser script`：
+适合多步、可复用的操作。用 bash 调 `python -m core.tools.browser.cli`：
 
 ```bash
-aigeme browser script <<'EOF'
-goto_url("https://www.baidu.com")
-wait_for_load()
-screenshot("baidu_home.png")
-search_baidu("AIGEME")
-wait_for_load()
-click_result(0)
-wait_for_load()
-text = extract_text()
-print(text)
+python -m core.tools.browser.cli goto_url https://www.baidu.com
+python -m core.tools.browser.cli wait_for_load
+python -m core.tools.browser.cli capture_screenshot baidu_home.png
+python -m core.tools.browser.cli search_baidu "AIGEME"
+python -m core.tools.browser.cli wait_for_load
+python -m core.tools.browser.cli click_result 0
+python -m core.tools.browser.cli wait_for_load
+python -m core.tools.browser.cli extract_text
+```
+
+或者直接执行多行脚本：
+
+```bash
+python -m core.tools.browser.cli <<'EOF'
+goto_url https://www.baidu.com
+wait_for_load
+capture_screenshot baidu_home.png
+search_baidu "AIGEME"
+wait_for_load
+click_result 0
+wait_for_load
+extract_text
 EOF
 ```
 
@@ -68,7 +80,7 @@ EOF
 | `goto_url(url)` | 导航到 URL |
 | `wait_for_load()` | 等待页面加载 |
 | `search_baidu(keyword)` | 百度搜索 |
-| `screenshot(path)` | 截图保存 |
+| `capture_screenshot(path)` | 截图保存 |
 | `extract_text()` | 提取页面文字 |
 | `scroll_to_bottom()` | 滚动到底部 |
 | `click_element(selector)` | 点击 CSS 选择器 |

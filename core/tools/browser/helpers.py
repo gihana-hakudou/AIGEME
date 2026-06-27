@@ -30,8 +30,10 @@ INTERNAL_PREFIXES = (
 
 # ── 目录常量（与 tools.py 保持一致） ──────────────────────────────────────────
 
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "browser-control"
-SS_DIR = _DATA_DIR / "screenshots"
+# 项目根目录 = helpers.py 向上 4 级：browser → tools → core → AIGEME
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+SS_DIR = _PROJECT_ROOT / "character_data" / "browser" / "tmp"
+_DATA_DIR = _PROJECT_ROOT / ".AIGEME" / ".data" / "tmp" / "browser-control"
 DOWNLOAD_DIR = _DATA_DIR / "downloads"
 
 # 模块加载时自动创建

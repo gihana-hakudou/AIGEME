@@ -80,8 +80,8 @@ class BrowserExecuteTool(BaseTool):
         import base64
         import time
         from pathlib import Path
-        # 截图存到 project root 下的 tmp 目录
-        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "browser-control"
+        # 截图存到 character_data/browser/tmp 目录（与 helpers.py 保持一致）
+        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / "character_data" / "browser" / "tmp"
         _ss_dir.mkdir(parents=True, exist_ok=True)
         _taken_screenshots: list[str] = []
 
@@ -152,11 +152,14 @@ class BrowserExecuteTool(BaseTool):
                     pass
 
             has_screenshot = "data_url" in result
-            return {
+            result_dict = {
                 "status": "ok",
                 "result": result,
                 "output_type": "image" if has_screenshot else "json",
             }
+            if has_screenshot and "data_url" in result:
+                result_dict["data_url"] = result["data_url"]  # 提升到顶层，供 loop.py L680 直接检查
+            return result_dict
 
         except asyncio.TimeoutError:
             return {
@@ -224,7 +227,7 @@ class BrowserSearchTool(BaseTool):
         try:
             h.search_baidu(query)
             h.wait_for_load(timeout=15)
-            h.wait(1.5)
+            h.wait(0.5)
 
             info = h.page_info()
 
