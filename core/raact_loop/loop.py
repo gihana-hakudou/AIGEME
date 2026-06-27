@@ -210,13 +210,11 @@ def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
                 width = inner_result.get("width", 0)
                 height = inner_result.get("height", 0)
                 size_kb = inner_result.get("size_kb", 0)
-                data_preview = inner_result.get("data_url_preview", "")
                 lines = [
                     f"文件: {fpath}",
                     f"尺寸: {width}x{height}",
                     f"大小: {size_kb} KB",
                     f"已转为多模态数据（可在下一轮注入 LLM 分析）",
-                    f"data_url 前缀: {data_preview}",
                 ]
                 # 浏览器截图可能有 stdout/stderr
                 stdout = inner_result.get("stdout", "")

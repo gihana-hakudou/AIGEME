@@ -169,7 +169,6 @@ class BrowserExecuteTool(BaseTool):
                     result["height"] = h
                     result["size_kb"] = round(len(ss_data) / 1024, 1)
                     result["file"] = ss_path
-                    result["data_url_preview"] = data_url[:80] + "..."  # 仅摘要，不给LLM看完整base64
                 except Exception:
                     pass
 
