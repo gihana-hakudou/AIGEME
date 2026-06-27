@@ -27,6 +27,7 @@ from fastapi.staticfiles import StaticFiles
 
 from core.mcp_server.manager import McpServerManager
 from core.memory.tools import MemoryTool
+from core.permission_mode import PermissionMode
 from core.tools.bash_tools import BashTool
 from core.tools.document_tools import DocumentTool
 from core.tools.mcp_tools import (
@@ -40,11 +41,6 @@ from core.tools.skill_tools import SkillTool
 from core.tools.system_tools import SystemTool
 from core.tools.web_search import WebSearchTool
 from core.plan.tool import PlanAndExecuteTool
-from core.tools.permission import (
-    BlocklistFilter,
-    PathScopeFilter,
-    ZonePermissionFilter,
-)
 from core.ws_server import WSServer
 
 logger = logging.getLogger(__name__)
@@ -87,6 +83,26 @@ def _del_user_env_var(name: str) -> None:
 
 # 项目根目录
 PROJECT_ROOT = Path(__file__).parent.parent
+
+
+# ── 权限模式（存内存，通过 bash_tools 模块级变量）──
+
+def _get_perm_mode() -> str:
+    """获取当前权限模式，默认 'normal'"""
+    try:
+        from core.tools.bash_tools import get_permission_mode
+        return get_permission_mode()
+    except Exception:
+        return "normal"
+
+
+def _set_perm_mode(mode: str) -> None:
+    """设置权限模式"""
+    try:
+        from core.tools.bash_tools import set_permission_mode
+        set_permission_mode(mode)
+    except Exception:
+        pass
 
 # === 诊断日志文件 ===
 _DIAG_LOG = PROJECT_ROOT / "diag_ws.log"
@@ -282,35 +298,14 @@ def create_app() -> FastAPI:
     from core.tools.browser import register_all as register_browser_tools
     register_browser_tools(registry)
 
-    # 注册权限过滤器（Phase 1 — 声明式确认 + 黑名单）
-    # system 工具查看配置为只读操作，无需用户确认
-    # registry.add_permission_filter(RequireConfirmFilter(rules=[
-    #     {"tool": "system", "reason": "系统信息查询需要用户确认"},
-    # ]))
-    registry.add_permission_filter(BlocklistFilter(rules=[
-        {"tool": "*", "args_match": {"path": p}, "reason": f"路径在黑名单中: {p}"}
-        for p in cfg.get("permission", {}).get("blocklist", [])
-    ]))
-
-    # 注册 PathScopeFilter（Phase 2 — 跨工具路径穿越检测）
-    registry.add_permission_filter(PathScopeFilter(
-        workspace_path=str(PROJECT_ROOT),
-        block_external=False,  # 先只检测穿越，不阻断外部路径
-    ))
-
     # 读取 LLM 部署模式
     llm_cfg = cfg.get("llm", {})
     llm_mode = llm_cfg.get("mode", "remote")
     is_local = llm_mode == "local"
     is_multimodal = llm_cfg.get("multimodal", False)
 
-    # 注册 ZonePermissionFilter（Phase 2a — 区域权限）
-    # strict_mode=True（remote API）：外部写入确认 + 黑名单生效
-    # strict_mode=False（local LLM）：所有路径放行（数据不出本机）
-    registry.add_permission_filter(ZonePermissionFilter(
-        project_root=PROJECT_ROOT,
-        strict_mode=not is_local,
-    ))
+    # 权限检查已全部移至 bash_tools.py 的 _check_command_risk（写路径保护 + 权限模式）
+    # 旧的 PermissionChain / BlocklistFilter / PathScopeFilter / ZonePermissionFilter 已移除
 
     # 初始化 WebSocket 服务器
     ws_server = WSServer(
@@ -493,6 +488,8 @@ def create_app() -> FastAPI:
             "context_window_k": max(1, (llm.get("context_window", 131072) or 131072) // 1024),
             # 上下文压缩触发阈值（0.0~1.0）
             "token_limit_ratio": float(llm.get("token_limit_ratio", 0.8)),
+            # 权限模式（存内存，不持久化）
+            "permission_mode": _get_perm_mode(),
         }
 
     @app.get("/api/llm-providers")
@@ -717,6 +714,10 @@ def create_app() -> FastAPI:
 
         if "preserve_thinking" in settings:
             llm_overrides["preserve_thinking"] = bool(settings["preserve_thinking"])
+
+        # 权限模式（仅存内存，通过 bash_tools 模块级变量持有，不持久化到 local.yaml）
+        if "permission_mode" in settings:
+            _set_perm_mode(settings["permission_mode"])
 
         if "context_window_k" in settings:
             raw = int(settings["context_window_k"]) * 1024

@@ -470,6 +470,18 @@ class WSServer:
                     _diag("_message_loop: plan_loop not available, ignoring plan_action")
                 continue
 
+            # ── set_permission_mode — 动态切换权限模式 ──
+            if msg.type == "set_permission_mode":
+                mode = (msg.content or "normal").strip().lower()
+                from core.tools.bash_tools import set_permission_mode
+                set_permission_mode(mode)
+                _diag(f"_message_loop: permission_mode set to {mode}")
+                await session.ws.send_json({
+                    "type": "permission_mode_set",
+                    "mode": mode,
+                })
+                continue
+
             # ── disconnect ──
             if msg.type == "disconnect":
                 _diag("_message_loop: disconnect, break")

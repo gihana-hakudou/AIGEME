@@ -219,6 +219,17 @@
       <div class="srow"><label>引擎</label><select class="sselect"><option>默认</option><option>Edge TTS</option><option>ElevenLabs</option></select></div>
     </div>
     <div class="sblock">
+      <h3>🔒 安全设置</h3>
+      <div class="srow">
+        <label>权限模式</label>
+        <select class="sselect" id="setting-permission-mode">
+          <option value="full_auto">FULL_AUTO — 全部放行（本地可信 LLM）</option>
+          <option value="normal" selected>NORMAL — 标准保护（默认）</option>
+          <option value="restricted">RESTRICTED — 严格保护（bash 不可用）</option>
+        </select>
+      </div>
+    </div>
+    <div class="sblock">
       <h3>🤖 模型设置</h3>
       <div class="srow model-pick-row">
         <label>模型</label>

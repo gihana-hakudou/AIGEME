@@ -6,7 +6,6 @@ import time
 from typing import Any
 
 from core.tools.base import BaseTool
-from core.tools.permission import PermissionChain, PermissionFilter
 
 logger = logging.getLogger(__name__)
 
@@ -90,11 +89,6 @@ class ToolRegistry:
         self._tools: dict[str, BaseTool] = {}
         self.session_id: str = ""
         self._rate_limiter = RateLimiter(max_calls=30, window=60.0)
-        self._permission_chain = PermissionChain()
-
-    def add_permission_filter(self, filter: PermissionFilter) -> None:
-        """注册权限过滤器"""
-        self._permission_chain.add(filter)
 
     def register(self, tool: BaseTool) -> None:
         """注册单个工具"""
@@ -122,25 +116,6 @@ class ToolRegistry:
                 "status": "blocked",
                 "reason": "rate limit exceeded",
             }
-
-        # 权限检查（用户已确认时跳过）
-        if not _confirmed:
-            verdict = await self._permission_chain.check(name, arguments, {"session_id": self.session_id})
-            if not verdict.allow:
-                logger.info("[AUDIT] session=%s tool=%s args=%s result=blocked(permission:%s)",
-                    self.session_id, name, json.dumps(arguments, ensure_ascii=False)[:200],
-                    verdict.reason)
-                return {
-                    "status": "blocked",
-                    "reason": verdict.reason,
-                }
-            if verdict.require_confirm:
-                logger.info("[AUDIT] session=%s tool=%s args=%s result=needs_confirm",
-                    self.session_id, name, json.dumps(arguments, ensure_ascii=False)[:200])
-                return {
-                    "status": "needs_confirm",
-                    "operation": verdict.reason or name,
-                }
 
         tool = self.get(name)
         if not tool:

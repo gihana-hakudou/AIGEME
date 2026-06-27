@@ -550,6 +550,11 @@
                 if (ptStatus) {
                     ptStatus.textContent = settings.preserve_thinking ? '开启' : '关闭';
                 }
+                // 权限模式
+                var permModeSelect = document.getElementById('setting-permission-mode');
+                if (permModeSelect && settings.permission_mode) {
+                    permModeSelect.value = settings.permission_mode;
+                }
                 // 上下文窗口（K）
                 if (settingCtxSlider && settings.context_window_k != null) {
                     var ctxK = Math.max(32, Math.min(1024, settings.context_window_k));
@@ -636,6 +641,11 @@
             // Preserve Thinking
             if (settingPreserveThinking) {
                 payload.preserve_thinking = settingPreserveThinking.checked;
+            }
+            // 权限模式
+            var permModeSelect = document.getElementById('setting-permission-mode');
+            if (permModeSelect) {
+                payload.permission_mode = permModeSelect.value;
             }
             // 上下文窗口（K → 后端自己换算）
             if (settingCtxInput) {
@@ -730,6 +740,12 @@
                 settingRatioSlider.value = Math.round(v * 100);
                 saveSettings();
             });
+        }
+
+        // 权限模式自动保存
+        var permModeSelect = document.getElementById('setting-permission-mode');
+        if (permModeSelect) {
+            permModeSelect.addEventListener('change', saveSettings);
         }
 
         // 保存按钮

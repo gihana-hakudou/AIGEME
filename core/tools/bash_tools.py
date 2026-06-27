@@ -1,4 +1,4 @@
-"""BashTool — Shell 命令执行（MVP 阶段使用基本安全规则）"""
+"""BashTool — Shell 命令执行（重构版：按权限模式 + 写路径检测）"""
 
 import os
 import re
@@ -80,7 +80,7 @@ def _resolve_python_to_venv(command: str) -> str:
     return command
 
 
-# ── Phase 3: AST 解析 ──
+# ── AST 解析 ──
 
 @dataclass
 class ParsedSegment:
@@ -121,298 +121,147 @@ class BashASTParser:
             ))
         return segments
 
-    @staticmethod
-    def extract_paths(segment: ParsedSegment) -> list[str]:
-        """从命令参数中提取可能的文件路径（跳过指令 flag）"""
-        paths = []
-        for arg in segment.args:
-            # 跳过指令 flag（-xxx 或 /xxx）
-            if arg.startswith("-") or arg.startswith("/"):
-                continue
-            if "/" in arg or "\\" in arg or arg.startswith("~"):
-                paths.append(arg)
-            elif arg.startswith(".") and len(arg) > 1:
-                paths.append(arg)
-        return paths
+
+# ── 安全检测函数 ──
+
+def _matches_destructive(command: str) -> bool:
+    """检测毁灭级命令（所有模式下都拦截）"""
+    cmd_lower = command.strip().lower()
+    # rm -rf / 或变体
+    if re.search(r'\brm\s+[-/].*?[/\\]|del\s+/[fsq]', cmd_lower):
+        return True
+    # format / fdisk / dd
+    if re.search(r'\b(format|fdisk|dd)\b', cmd_lower):
+        return True
+    return False
 
 
-# ── 命令白名单（Phase 3 替代旧黑名单） ──
+def _extract_write_targets(command: str) -> list[str]:
+    """从 bash 命令中提取所有可能会写文件的目标路径。
 
-# 绝对禁止的系统命令
-ALWAYS_BLOCKED = {
-    "sudo", "su", "shutdown", "reboot", "poweroff", "halt",
-    "format", "mkfs", "fdisk", "dd",
-    "iptables", "iptables-restore", "firewall-cmd", "ufw",
-    "systemctl", "service",
-    "ssh", "scp", "sftp", "rsync",
-    "passwd", "useradd", "userdel",
-    "mount", "umount", "modprobe", "insmod",
-    "crontab", "at",
-    "regedit",
-}
+    检测以下模式：
+    1. > / >> shell 重定向（排除 2>&1 这种 fd 重定向）
+    2. 管道 tee：echo data | tee file
+    3. 写入类命令的参数路径
+    """
+    targets = []
 
-# 需确认的命令（有写入/破坏风险）
-CONFIRM_COMMANDS = {
-    "rm", "del", "rmdir", "rd",
-    "mv", "move", "cp", "copy",
-    "mkdir", "md", "touch",
-    "sed", "tee", "base64",
-    "kill", "killall", "pkill",
-    "wget", "curl",
-}
+    # 1. > 和 >> 重定向
+    # 模式：> path 或 >> path，但不匹配 a>b（无空格）或 >&1
+    for m in re.finditer(r'(?<!\d)(>){1,2}\s*([^\s|&;<>()]+)', command):
+        path = m.group(2).strip()
+        if path and not path.startswith('&'):
+            targets.append(path)
 
-# 自动允许的命令（只读/信息查询）
-ALLOWED_COMMANDS = {
-    "cd", "chdir", "pushd", "popd",
-    "ls", "dir", "cat", "type", "head", "tail", "less", "more",
-    "grep", "find", "wc", "sort", "uniq", "cut", "diff", "cmp",
-    "pwd", "echo", "printf", "date",
-    "file", "stat", "du", "df",
-    "which", "where",
-    "python", "python3", "pip", "pip3",
-    "git", "pytest",
-    "npx",
-}
+    # 2. 管道 tee
+    for m in re.finditer(r'\|\s*tee\s+([^\s|&;<>()]+)', command):
+        targets.append(m.group(1).strip())
+
+    # 3. 写入类命令的参数
+    write_cmds = {'cp', 'mv', 'rm', 'del', 'copy', 'move', 'rename', 'ren',
+                  'mkdir', 'md', 'touch', 'tee', 'sed', 'erase', 'rd', 'rmdir'}
+    parsed = BashASTParser.parse(command)
+    for seg in parsed:
+        if seg.command in write_cmds:
+            for arg in seg.args:
+                if not arg.startswith('-') and not arg.startswith('/'):
+                    targets.append(arg)
+
+    return targets
 
 
-def _path_zone_check(path: str, is_write: bool = True) -> str:
-    """同步版路径区域判定（不依赖 async chain）
+def _is_inline_script(command: str) -> bool:
+    """检测是否为脚本解释器 + -c/-e 内联代码执行"""
+    script_flags = {'-c', '-e', '--eval', '-Command'}
+    parts = command.split()
+    for i, part in enumerate(parts):
+        if part in script_flags and i + 1 < len(parts):
+            # 后面有代码参数
+            return True
+    return False
 
-    与 ZonePermissionFilter 逻辑保持一致：
-    - writable → auto（读+写均允许）
-    - project + read → auto（读项目代码允许）
-    - project + write → confirm
-    - system → blocked
-    - external → confirm
+
+def _check_protected_path(targets: list[str]) -> bool:
+    """检查目标路径中是否有 protected 路径（core/ 或 .git/）"""
+    for t in targets:
+        p = t.replace('\\', '/')
+        # 直接匹配
+        if p.startswith('core/') or p.startswith('.git/'):
+            return True
+        if p == 'core' or p == '.git':
+            return True
+        if p.startswith('./core/') or p.startswith('./.git/'):
+            return True
+        # 绝对路径或跨级路径
+        try:
+            abs_p = Path(os.path.abspath(t)).resolve()
+            rel = abs_p.relative_to(_PROJECT_ROOT)
+            rel_str = str(rel).replace('\\', '/')
+            if rel_str.startswith('core/') or rel_str.startswith('.git/'):
+                return True
+        except (ValueError, RuntimeError):
+            pass
+    return False
+
+
+def _check_command_risk(command: str, mode: str = "normal") -> str:
+    """统一安全检查
 
     Args:
-        path: 要检查的文件路径
-        is_write: 是否为写操作，默认为 True（安全保守）
+        command: 要执行的 shell 命令
+        mode: 权限模式（full_auto / normal / restricted）
 
-    返回: "auto" / "confirm" / "blocked"
+    Returns:
+        "auto" / "confirm" / "blocked"
     """
-    p = Path(path).resolve()
-    project_root = Path(__file__).parent.parent.parent
-
-    # 先检查是否在 project root 下
-    in_project = str(p).startswith(str(project_root))
-
-    # writable 区域：必须在 project root 下 + 子目录名称匹配
-    writable_names = {".AIGEME", "character", "tachi-e", "venv"}
-    if in_project:
-        for part in p.relative_to(project_root).parts:
-            if part in writable_names:
-                return "auto"
-
-    # project 区域：读操作 auto，写操作 confirm
-    if in_project:
-        if is_write:
-            return "confirm"  # 项目代码区写入需确认
-        return "auto"  # 项目代码区读取自动允许
-
-    # 系统路径
-    system_prefixes = [r"C:\Windows", r"C:\Program Files", r"C:\Program Files (x86)"]
-    for sp in system_prefixes:
-        if str(p).startswith(sp):
-            return "blocked"
-
-    return "confirm"
-
-
-# ── 脚本解释器定义 ──
-SCRIPT_INTERPRETERS: dict[str, dict] = {
-    "python": {
-        "aliases": ["python", "python3", "py"],
-        "exec_flags": ["-c"],
-        "description": "Python 解释器"
-    },
-    "perl": {
-        "aliases": ["perl"],
-        "exec_flags": ["-e"],
-        "description": "Perl 解释器"
-    },
-    "ruby": {
-        "aliases": ["ruby"],
-        "exec_flags": ["-e"],
-        "description": "Ruby 解释器"
-    },
-    "node": {
-        "aliases": ["node", "nodejs", "deno", "bun"],
-        "exec_flags": ["-e", "--eval"],
-        "description": "JavaScript/TypeScript 解释器"
-    },
-    "php": {
-        "aliases": ["php"],
-        "exec_flags": ["-r"],
-        "description": "PHP 解释器"
-    },
-    "powershell": {
-        "aliases": ["powershell", "pwsh"],
-        "exec_flags": ["-Command", "-c"],
-        "description": "PowerShell 解释器"
-    },
-    "lua": {
-        "aliases": ["lua", "luajit"],
-        "exec_flags": ["-e"],
-        "description": "Lua 解释器"
-    },
-    "tclsh": {
-        "aliases": ["tclsh", "wish"],
-        "exec_flags": ["-c"],
-        "description": "Tcl 解释器"
-    },
-    "sh": {
-        "aliases": ["sh", "bash", "zsh", "dash", "ksh", "fish"],
-        "exec_flags": ["-c"],
-        "description": "Shell 解释器"
-    },
-    "awk": {
-        "aliases": ["awk", "gawk", "mawk", "nawk"],
-        "exec_flags": ["-e"],
-        "description": "Awk 文本处理工具"
-    },
-    "groovy": {
-        "aliases": ["groovy"],
-        "exec_flags": ["-e"],
-        "description": "Groovy 解释器"
-    },
-    "scala": {
-        "aliases": ["scala", "scalac"],
-        "exec_flags": ["-e"],
-        "description": "Scala 解释器"
-    },
-    "lisp": {
-        "aliases": ["sbcl", "clisp", "clojure", "gosh", "racket", "guile"],
-        "exec_flags": ["-e"],
-        "description": "Lisp 系列解释器"
-    },
-    "kotlin": {
-        "aliases": ["kotlin"],
-        "exec_flags": ["-e"],
-        "description": "Kotlin 解释器"
-    },
-    "swift": {
-        "aliases": ["swift"],
-        "exec_flags": ["-e"],
-        "description": "Swift 解释器"
-    },
-    "rhino": {
-        "aliases": ["rhino", "jrunscript", "js"],
-        "exec_flags": ["-e"],
-        "description": "Java/JS 脚本引擎"
-    },
-}
-
-# 风险命令前缀（需确认）—— 作为深层防御 fallback
-RISKY_COMMANDS = [
-    "rm", "del", "git push", "git reset", "git rebase",
-    "wget", "ping", "dig", "nslookup", "host",
-    "traceroute", "tracepath", "mtr",
-    "kill", "killall", "pkill", "nohup",
-    "gcc", "g++", "clang", "clang++", "make", "cmake",
-    "rustc", "go", "cargo",
-    "sqlite3", "base64", "strings",
-]
-
-
-def _is_command_blocked(command_name: str) -> bool:
-    """判断命令是否在绝对禁止集合中（提取 basename，去除 .exe）"""
-    base = basename(command_name)
-    if base.endswith(".exe"):
-        base = base[:-4]
-    return base in ALWAYS_BLOCKED
-
-
-def _match_interpreter(command_name: str) -> dict | None:
-    """在 SCRIPT_INTERPRETERS 中查找匹配（含别名，提取 basename，去除 .exe 后缀）"""
-    name = basename(command_name).lower()
-    # 去除 .exe 后缀（Windows 兼容）
-    if name.endswith(".exe"):
-        name = name[:-4]
-    for info in SCRIPT_INTERPRETERS.values():
-        if name in info["aliases"]:
-            return info
-    return None
-
-
-def _classify_bash_op(command: str, segment: ParsedSegment) -> str:
-    """判断 bash 命令的操作类型: read / write / exec"""
-    cmd = segment.command
-    if cmd in {"rm", "del", "rmdir", "rd", "mv", "move", "cp", "copy",
-               "mkdir", "md", "touch", "tee", "sed"}:
-        return "write"
-    if cmd in {"cat", "head", "tail", "less", "more", "type",
-               "ls", "dir", "grep", "find", "wc", "sort", "uniq", "cut", "diff", "cmp",
-               "file", "stat", "du", "df", "which", "where"}:
-        return "read"
-    return "exec"
-
-
-def _check_command_risk(command: str) -> str:
-    """统一安全检查：AST 解析 → 命令白名单 → 路径区域检查"""
     if not command or not command.strip():
         return "auto"
 
-    parsed = BashASTParser.parse(command)
+    # 1. 毁灭级命令（所有模式）
+    if _matches_destructive(command):
+        return "blocked"
 
-    for segment in parsed:
-        cmd = segment.command
+    # 2. 写保护路径检测
+    targets = _extract_write_targets(command)
+    if _check_protected_path(targets):
+        return "blocked"
 
-        # 语法错误
-        if cmd == "__SYNTAX_ERROR__":
-            return "blocked"
+    # 3. RESTRICTED → bash 不可用
+    if mode == "restricted":
+        return "blocked"
 
-        # 跳过环境变量赋值（$env:VAR='val'、VAR=val 等），它们是安全的前置设置
-        if "=" in cmd and (cmd.startswith("$") or cmd[0].isalpha() and cmd.split("=", 1)[0].isupper()):
-            continue
+    # 4. 脚本解释器内联代码 → NORMAL 下需确认
+    if mode == "normal" and _is_inline_script(command):
+        return "confirm"
 
-        # 1. 绝对禁止
-        if cmd in ALWAYS_BLOCKED:
-            return "blocked"
-
-        # 2. 项目 venv 或 writable 区域内的 python/pip → auto
-        if cmd in ("python", "python3", "pip", "pip3"):
-            # 兼容旧检查：venv 路径（支持 venv 和 .venv）
-            if str(PROJECT_VENV) in command or str(_PROJECT_VENV_ALT) in command:
-                continue  # 跳过后续检查
-            # 新检查：命令中的路径是否在 writable zone 内
-            paths = BashASTParser.extract_paths(segment)
-            in_writable = False
-            for fp in paths:
-                zone = _path_zone_check(fp, is_write=True)  # 保守假设写操作
-                if zone == "auto":
-                    in_writable = True
-                    break
-            if in_writable:
-                continue  # writable 区域内自动放行
-            # 不 return confirm — 让后续 ALLOWED_COMMANDS 判断接管
-            # python 已在 ALLOWED_COMMANDS 中，会被自动放行
-
-        # 3. 提取路径参数 → 同步路径区域检查
-        paths = BashASTParser.extract_paths(segment)
-        is_write = _classify_bash_op(command, segment) == "write"
-        for fp in paths:
-            zone_result = _path_zone_check(fp, is_write=is_write)
-            if zone_result == "blocked":
-                return "blocked"
-            if zone_result == "confirm":
-                return "confirm"
-            # auto → 继续检查其他路径
-
-        # 4. 命令白名单
-        if cmd in CONFIRM_COMMANDS:
-            return "confirm"
-        if cmd not in ALLOWED_COMMANDS:
-            return "confirm"
-
+    # 5. 其他 → 自动放行
     return "auto"
 
+
+# ── 模块级权限模式（由前端设置更新，默认 NORMAL） ──
+
+_current_mode: str = "normal"
+
+
+def set_permission_mode(mode: str) -> None:
+    """设置全局权限模式（由 WebSocket RPC 调用）"""
+    global _current_mode
+    _current_mode = mode
+
+
+def get_permission_mode() -> str:
+    """获取当前权限模式"""
+    global _current_mode
+    return _current_mode
+
+
+# ── BashTool ──
 
 class BashTool(BaseTool):
     """Shell 命令执行工具"""
 
     name = "bash"
-    description = "执行 shell 命令。项目 venv 内自动允许；系统环境修改和风险操作需确认。"
+    description = "执行 shell 命令。保护 core/ 和 .git/ 不被写入；支持三种权限模式。"
     output_type = "bash"
 
     parameters = {
@@ -505,7 +354,7 @@ class BashTool(BaseTool):
         if kwargs.get("_confirmed") or kwargs.get("_force"):
             return await self._run_command(command, timeout=timeout)
 
-        risk = _check_command_risk(command)
+        risk = _check_command_risk(command, mode=_current_mode)
 
         if risk == "blocked":
             cmd_name = command.strip().split()[0] if command.strip() else command
