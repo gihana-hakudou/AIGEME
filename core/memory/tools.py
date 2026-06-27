@@ -191,7 +191,7 @@ class MemoryTool(BaseTool):
             },
             "id": {
                 "type": "string",
-                "description": "记忆/任务ID（add时自动生成）。memory read/del/edit、task done/cancel/read 时必填",
+                "description": "记忆/任务标识。memory add 时作标题（可选，不填自动生成）；read/del/edit、task done/cancel/read 时必填",
             },
         },
         "required": ["operation"],
@@ -229,8 +229,8 @@ class MemoryTool(BaseTool):
                     "status": "error",
                     "error": "add 操作需要 content（内容）和 type（类型）参数",
                 }
-            # 时间戳+随机2位做ID和文件名，content就是内容
-            _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
+            # id 可选：提供则做文件名/标题，不提供则自动生成
+            _id = id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
             return await self._add_memory(memory_dir, index, _id, content, type, importance)
 
         if operation == "read":
