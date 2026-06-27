@@ -316,6 +316,46 @@ class RaActLoop:
         """获取取消状态"""
         return getattr(self, '_cancelled_ref', lambda: False)()
 
+    def _handle_cancelled_round(
+        self,
+        round_num: int,
+        response: 'RaActResponse | None',
+        messages: list,
+    ) -> str:
+        """处理用户强制取消：清理未执行工具、确保历史可持久化
+
+        Returns:
+            本轮 final_say
+        """
+        if response is None:
+            return ""
+
+        # 1. 从 messages 中移除本轮未执行的 tool_calls（最后一条 assistant 消息）
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant" and "tool_calls" in messages[i]:
+                messages[i].pop("tool_calls", None)
+                break
+
+        # 2. 移除后续未完成的 tool_msg（assistant 之后的 tool 消息）
+        for i in range(len(messages) - 1, -1, -1):
+            if messages[i].get("role") == "assistant":
+                j = i + 1
+                while j < len(messages):
+                    if messages[j].get("role") == "tool":
+                        messages.pop(j)
+                    else:
+                        break
+                break
+
+        # 3. 返回取消提示作为 final_say
+        hint = response.say or ""
+        if hint:
+            hint += "\n\n*用户强制取消了本轮输出*"
+        else:
+            hint = "*用户强制取消了本轮输出*"
+        logger.info("RaAct 被用户取消（第%d轮），已清理未执行工具", round_num)
+        return hint
+
     @property
     def _pending_confirm(self) -> asyncio.Event | None:
         """获取确认 Event"""
@@ -436,6 +476,7 @@ class RaActLoop:
             # [检查点1] round 循环开始前
             if self._cancelled:
                 logger.debug("RaAct 被取消（检查点1）")
+                final_say = self._handle_cancelled_round(round_num, last_response, messages)
                 break
 
             logger.debug("RaAct round %d/%d", round_num, MAX_RAACT_ROUNDS)
@@ -547,6 +588,7 @@ class RaActLoop:
             # [检查点2] LLM 调用后，跳过 tool 循环
             if self._cancelled:
                 logger.debug("RaAct 被取消（检查点2）")
+                final_say = self._handle_cancelled_round(round_num, response, messages)
                 break
 
             last_response = response
@@ -686,6 +728,7 @@ class RaActLoop:
                 # [检查点3] 工具执行 + 确认处理完成后
                 if self._cancelled:
                     logger.debug("RaAct 被取消（检查点3）")
+                    final_say = self._handle_cancelled_round(round_num, response, messages)
                     break
 
                 # ════════════════════════════════════════════════════════════
@@ -780,6 +823,10 @@ class RaActLoop:
             if round_num == MAX_RAACT_ROUNDS:
                 logger.info("RaAct 达到最大轮数 %d，强制结束", MAX_RAACT_ROUNDS)
                 final_say = "\n".join(accumulated_say) if accumulated_say else (response.say or "")
+                if final_say:
+                    final_say += "\n\n*已达最大对话轮数，结论可能不完整*"
+                else:
+                    final_say = "*对话已达最大轮数，未能输出完整结论*"
                 break
 
         # 拼接本轮结果到 history（仅当前轮次的 in-loop 消息，不包含历史）
