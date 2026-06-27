@@ -107,8 +107,14 @@ class CharacterLoader:
                 if isinstance(cfg, dict):
                     info["name"] = str(cfg.get("name", char_id))
                     info["description"] = str(cfg.get("description", ""))
+                    # tachie_dir：从 config.yaml 读取，默认为 tachi-e/<char_id>
+                    info["tachie_dir"] = str(cfg.get("tachie_dir", f"tachi-e/{char_id}"))
             except (yaml.YAMLError, ValueError):
                 pass
+
+        # 若 config.yaml 未设置 tachie_dir，使用默认值
+        if "tachie_dir" not in info:
+            info["tachie_dir"] = f"tachi-e/{char_id}"
 
         # 降级：从 identity.md 提取名字
         if info["name"] == char_id:
@@ -142,14 +148,15 @@ class CharacterLoader:
             except yaml.YAMLError:
                 pass
 
-        # avatar: 优先从 expressions 映射取 default 实际文件名
+        # avatar: 优先从 expressions 映射取 default 实际文件名，路径基于 tachie_dir
         avatar_file = "default.png"
         expr_map = info.get("expressions", {})
         default_expr = expr_map.get("default", "")
         if default_expr:
             avatar_file = default_expr
-        avatar_path = self._project_root / "tachi-e" / char_id / avatar_file
+        tachie_dir = info.get("tachie_dir", f"tachi-e/{char_id}")
+        avatar_path = self._project_root / tachie_dir / avatar_file
         if avatar_path.exists():
-            info["avatar"] = f"/tachi-e/{char_id}/{avatar_file}"
+            info["avatar"] = f"/{tachie_dir}/{avatar_file}"
 
         return info
