@@ -787,10 +787,16 @@ class RaActLoop:
                     messages.append(tool_msg)
 
                     # ── 图片读取结果：注入多模态 user 消息让 LLM 能"看到"图片 ──
+                    # 仅已知支持多模态的 provider 才注入，否则 base64 会被当作文本 token 吃掉
+                    _model_name = getattr(self._instructor, '_model', '') if hasattr(self, '_instructor') else ''
+                    _provider = _model_name.split("/")[0].lower() if "/" in _model_name else ""
+                    _mm_providers = {"openai", "anthropic", "gemini", "azure"}
+                    _is_multimodal = _provider in _mm_providers
                     if (result.get("status") == "ok"
                         and output_type == "image"
                         and isinstance(inner, dict)
-                        and result.get("_ss_data_url")):
+                        and result.get("_ss_data_url")
+                        and _is_multimodal):
                         data_url = result["_ss_data_url"]
                         file_path = inner.get("file", "")
                         img_user_msg = {
