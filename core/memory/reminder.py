@@ -85,7 +85,7 @@ class TaskManager:
         """创建待办任务
 
         Args:
-            title: 任务标题
+            title: 任务标题（agent 填的提醒内容）
             trigger_at: 触发时间
               "HH:MM" → 每日此时触发
               "YYYY-MM-DD HH:MM" → 单次触发
@@ -98,8 +98,10 @@ class TaskManager:
         Returns:
             {"status": "ok", "result": {"id": "...", "title": "..."}}
         """
-        # 直接用标题作为任务ID（文件名），不生成 UUID，agent 填什么就用什么
-        task_id = title.strip()
+        # 生成短 ID：8 位十六进制（用当前时间的微秒部分 + 随机数）
+        _ts = datetime.now().strftime("%f")
+        _rand = hashlib.md5(str(uuid.uuid4()).encode()).hexdigest()[:4]
+        task_id = f"t{_ts}{_rand}"[:12]
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         body = content or title
         fm = {
