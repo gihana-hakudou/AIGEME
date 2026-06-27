@@ -229,7 +229,7 @@ class PromptAssembler:
                     for t in due:
                         repeat_tag = f" ({t['repeat']})" if t.get("repeat") else ""
                         lines.append(f"- [{t['id']}] {t['title']}（原定 {t['trigger_at']}{repeat_tag}）: {t['content']}")
-                        lines.append(f"  标记完成: memory(operation=task, task_action=done, title={t['id']})")
+                        lines.append(f"  标记完成: memory(operation=task, task_action=done, id={t['id']})")
                     parts.append("\n".join(lines))
             except Exception:
                 pass

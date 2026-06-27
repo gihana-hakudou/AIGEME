@@ -110,7 +110,7 @@ class MemoryTool(BaseTool):
             },
             "title": {
                 "type": "string",
-                "description": "记忆标题（文件名不含 .md）。add/read/del/edit 时必填；task done/cancel/read 时用任务ID代替",
+                "description": "记忆标题（文件名不含 .md）。add/read/del/edit 时必填",
             },
             "content": {
                 "type": "string",
@@ -186,6 +186,10 @@ class MemoryTool(BaseTool):
                 "enum": ["daily", "weekly", "monthly"],
                 "description": "重复模式: daily=每天 / weekly=每周 / monthly=每月（task add 可选）",
             },
+            "id": {
+                "type": "string",
+                "description": "任务ID（UUID），task done/cancel/read 时必填，代替 title 参数",
+            },
         },
         "required": ["operation"],
     }
@@ -211,6 +215,7 @@ class MemoryTool(BaseTool):
         task_action: str | None = None,
         trigger_at: str | None = None,
         repeat: str | None = None,
+        id: str | None = None,
         **kwargs,
     ) -> dict:
         memory_dir = _get_memory_dir(char_id=self._char_id)
@@ -280,20 +285,23 @@ class MemoryTool(BaseTool):
                     return {"status": "error", "error": "task add 需要 title 和 trigger_at 参数"}
                 return await tm.add(title=title, trigger_at=trigger_at, content=content or "", repeat=repeat)
             if task_action == "done":
-                if not title:
-                    return {"status": "error", "error": "task done 需要 title（任务ID）参数"}
-                return await tm.done(title)
+                _task_id = id or title
+                if not _task_id:
+                    return {"status": "error", "error": "task done 需要 id（任务ID）参数"}
+                return await tm.done(_task_id)
             if task_action == "cancel":
-                if not title:
-                    return {"status": "error", "error": "task cancel 需要 title（任务ID）参数"}
-                return await tm.cancel(title)
+                _task_id = id or title
+                if not _task_id:
+                    return {"status": "error", "error": "task cancel 需要 id（任务ID）参数"}
+                return await tm.cancel(_task_id)
             if task_action == "list":
                 status_filter = kwargs.get("status", "")
                 return await tm.list_tasks(status_filter)
             if task_action == "read":
-                if not title:
-                    return {"status": "error", "error": "task read 需要 title（任务ID）参数"}
-                return await tm.read_task(title)
+                _task_id = id or title
+                if not _task_id:
+                    return {"status": "error", "error": "task read 需要 id（任务ID）参数"}
+                return await tm.read_task(_task_id)
             return {"status": "error", "error": f"不支持的任务操作: {task_action}"}
 
         if operation == "graph_search":
