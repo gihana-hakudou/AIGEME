@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import os
 import re
 from typing import Any, Callable
 import litellm
@@ -137,6 +138,7 @@ class InstructorClient:
         tools: list[dict] | None = None,
         cancelled_check: Callable[[], bool] | None = None,
         tool_choice: str | None = None,
+        stream: bool = True,
     ) -> RaActResponse:
         """流式调用 LLM，推送 thinking/speech 到前端，流结束后提取 tool_calls
 
@@ -161,8 +163,11 @@ class InstructorClient:
             _provider, _, _name = model_name.partition("/")
             if _name:
                 if self._native_provider:
-                    # 保留 provider/model_name 格式，走 litellm 原生路由
-                    model_name = f"{_provider}/{_name}"
+                    # local_8080_anthropic：靠 custom_llm_provider 路由，不加 anthropic/ 前缀
+                    if _provider == "local_8080_anthropic":
+                        model_name = _name.strip()
+                    else:
+                        model_name = f"{_provider}/{_name}"
                 else:
                     model_name = _name.strip()
 
@@ -196,11 +201,18 @@ class InstructorClient:
 
         kwargs = {}
         if self._api_base:
-            kwargs["api_base"] = self._api_base
-            if not self._native_provider:
-                kwargs["custom_llm_provider"] = "openai"  # 非原生 → 强制走 OpenAI 兼容协议
+            # local_8080_anthropic：走 litellm Anthropic 原生路由（用环境变量代替 api_base）
+            if self._native_provider and self._get_provider() in ("local_8080_anthropic", "anthropic"):
+                os.environ["ANTHROPIC_API_BASE"] = self._api_base
+                kwargs["custom_llm_provider"] = "anthropic"
+            else:
+                kwargs["api_base"] = self._api_base
+                if not self._native_provider:
+                    kwargs["custom_llm_provider"] = "openai"  # 非原生 → 强制走 OpenAI 兼容协议
         if self._api_key:
             kwargs["api_key"] = self._api_key
+        elif self._native_provider and self._get_provider() in ("local_8080_anthropic", "anthropic"):
+            kwargs["api_key"] = "not-needed"  # litellm anthropic 需要 key，本地服务无所谓
         if self._presence_penalty is not None:
             kwargs["presence_penalty"] = self._presence_penalty
         if self._frequency_penalty is not None:
@@ -228,6 +240,43 @@ class InstructorClient:
                 "clear_thinking": not self.preserve_thinking,
             }
         kwargs["extra_body"] = extra_body
+
+        # 有工具调用或用户关闭流式时走非流式
+        if openai_tools or not stream:
+            response = await litellm.acompletion(
+                model=model_name,
+                messages=dict_messages,
+                stream=False,
+                temperature=self._temperature,
+                max_tokens=self._max_tokens,
+                tools=openai_tools,
+                tool_choice=tool_choice if tool_choice is not None else "auto",
+                **kwargs,
+            )
+            msg = response.choices[0].message
+            rc = getattr(msg, "reasoning_content", None) or ""
+            c = msg.content or ""
+            if rc:
+                await send_block(Block(block_type="thinking", delta=rc, is_final=True))
+            if c:
+                await send_block(Block(block_type="speech", delta=c, is_final=True))
+            from core.engine.models import ToolCallDef
+            tool_defs = None
+            if getattr(msg, "tool_calls", None):
+                tool_defs = []
+                for tc in msg.tool_calls:
+                    try:
+                        args = json.loads(tc.function.arguments or "{}")
+                    except json.JSONDecodeError:
+                        args = {}
+                    tool_defs.append(ToolCallDef(
+                        id=tc.id, name=tc.function.name, arguments=args,
+                    ))
+            return RaActResponse(
+                reasoning=rc,
+                say=c or None,
+                tool_calls=tool_defs,
+            )
 
         stream = await litellm.acompletion(
             model=model_name,

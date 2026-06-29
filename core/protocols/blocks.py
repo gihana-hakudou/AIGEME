@@ -50,6 +50,7 @@ class ClientMessage(BaseModel):
     character_id: str = Field(default="", description="目标角色 ID（user_message 类型需要）")
     mode: str = Field(default="single", description="对话模式 (single/group)")
     images: list[str] = Field(default_factory=list, description="图片 base64 列表")
+    stream: bool = Field(default=True, description="流式开关（false=禁用流式输出）")
     confirm_action: str = Field(default="", description="确认操作类型")
     tool_call_id: str = Field(default="", description="工具调用的原始 ID")
     plan_action: str = Field(default="", description="计划审核操作 (approve/reject)")

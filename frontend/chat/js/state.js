@@ -529,6 +529,7 @@ const AIGEME = {
                 character_id: this.chat.currentChar ? this.chat.currentChar.id : 'ario',
                 mode: 'single',
                 images: [],
+                stream: document.getElementById('stream-toggle')?.checked ?? true,
             };
             // 附带待发送的图片
             if (this.chat.pendingImages && this.chat.pendingImages.length > 0) {

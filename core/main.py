@@ -131,6 +131,7 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
     # 本地部署 — 按默认端口分组
     "ollama": {"api_base": "http://localhost:11434", "native": False},
     "local_8080": {"api_base": "http://localhost:8080", "native": False},
+    "local_8080_anthropic": {"api_base": "http://localhost:8080", "native": True},
     "lmstudio": {"api_base": "http://localhost:1234", "native": False},
     "vllm_local": {"api_base": "http://localhost:8000", "native": False},
     "jan_local": {"api_base": "http://localhost:1337", "native": False},
@@ -533,6 +534,9 @@ def create_app() -> FastAPI:
             ("local_8080", "本地服务 (8080)",
              "Llamafile / LocalAI / llama.cpp 默认端口 8080",
              "http://localhost:8080", "openai"),
+            ("local_8080_anthropic", "本地服务 (8080) [Anthropic]",
+             "llama.cpp Anthropic 协议 — 完美解决工具调用/SSE 兼容问题",
+             "http://localhost:8080", ""),
             ("lmstudio", "LM Studio (1234)",
              "LM Studio 默认 API 端口 1234",
              "http://localhost:1234", "openai"),

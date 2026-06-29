@@ -130,8 +130,8 @@
             return '<strong>' + _escapeHtml(inner) + '</strong>';
         });
 
-        // 斜体: *text*（避免匹配 **）
-        text = text.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, function(m, inner) {
+        // 斜体: *text*（避免匹配 **；且 * 前后不能有空格，避免将 * ... * 列表标记误判为斜体）
+        text = text.replace(/(?<!\*)\*(?!\s)([^*]+?)(?<!\s)\*(?!\*)/g, function(m, inner) {
             return '<em>' + _escapeHtml(inner) + '</em>';
         });
 

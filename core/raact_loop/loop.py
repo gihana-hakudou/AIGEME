@@ -371,6 +371,7 @@ class RaActLoop:
         history: list[Any],
         send_block: Any,
         images: list[dict] | None = None,
+        stream: bool = True,
     ) -> tuple[list[Any], str, str]:
         """
         RaAct 主循环。
@@ -508,6 +509,7 @@ class RaActLoop:
                     tools=self._registry.schemas,
                     cancelled_check=lambda: self._cancelled,
                     tool_choice=_tc,
+                    stream=stream,
                 )
             except ContextWindowExceededError as e:
                 logger.warning("上下文窗口超限: %s，强制丢弃旧消息后重试", e)

@@ -535,6 +535,7 @@ class WSServer:
                         user_message=msg.content,
                         history=session.history,
                         images=image_contents or None,
+                        stream=msg.stream,
                     )
                 )
                 _diag("_message_loop: raact_stream background task launched")
@@ -545,6 +546,7 @@ class WSServer:
         user_message: str,
         history: list[Any],
         images: list[dict] | None = None,
+        stream: bool = True,
     ) -> None:
         """后台运行 raact_stream，完成后持久化结果（不阻塞消息循环）"""
         import logging
@@ -556,6 +558,7 @@ class WSServer:
                 history=history,
                 send_block=session.send_block,
                 images=images,
+                stream=stream,
             )
             ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 返回: final_say=%s, round_messages=%s, reasoning_count=%s",
                 final_say[:80] if final_say else "None", len(round_messages), len(accumulated_reasoning))
