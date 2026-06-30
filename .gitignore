@@ -56,9 +56,6 @@ tests/
 # Docs build
 docs/
 
-# Scripts output
-scripts/
-
 # Character dev
 character/wantao/
 

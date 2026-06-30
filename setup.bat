@@ -68,6 +68,10 @@ if %errorlevel% neq 0 (
     )
 )
 
+:: -- Apply litellm Anthropic streaming fix --
+echo [INFO] Applying litellm anthropic streaming patch...
+"!PYTHON!" "!SCRIPT_DIR!scripts\patch_litellm.py"
+
 :: -- Install Patchright Chromium to project local .AIGEME/.browser/ --
 echo [INFO] Installing browser runtime (~150MB first time)...
 if not exist "!BROWSER_DIR!" mkdir "!BROWSER_DIR!"

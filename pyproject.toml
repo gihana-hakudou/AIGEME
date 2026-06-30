@@ -7,7 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.110.0",
     "uvicorn[standard]>=0.27.0",
-    "litellm>=1.40.0",
+    "litellm>=1.90.1",
     "langchain-core>=0.2.0",
     "langchain-litellm>=0.6.0",
     "instructor>=1.0.0",
