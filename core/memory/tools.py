@@ -113,12 +113,12 @@ class MemoryTool(BaseTool):
         "properties": {
             "operation": {
                 "type": "string",
-                "enum": ["add", "read", "search", "list", "del", "edit", "link", "audit", "merge", "prune", "graph_search", "task"],
+                "enum": ["add", "read", "search", "list", "del", "edit", "link", "audit", "merge", "prune", "graph_search"],
                 "description": "add=新增 / read=读取全文 / search=搜索关键词 / list=浏览索引 / del=删除文件 / edit=编辑文件 / link=建立链接 / audit=扫描审计 / merge=合并文件 / prune=清理孤立文件 / graph_search=图谱扩散检索",
             },
             "content": {
                 "type": "string",
-                "description": "记忆或提醒的内容。add/edit/task add 时使用",
+                "description": "记忆内容。add/edit 时使用",
             },
             "type": {
                 "type": "string",
@@ -144,6 +144,25 @@ class MemoryTool(BaseTool):
             "importance": {
                 "type": "integer",
                 "description": "重要性 1-5（add 可选，默认 3）。\n1=临时/一次性的信息\n2=低价值参考\n3=普通记忆（默认）\n4=重要信息\n5=核心/永久保存，永不过时",
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "标签列表。add 时可选，给新增记忆附加标签（如 [工作, 项目]）",
+            },
+            "new_tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "新标签列表。edit 时可选，替换记忆的标签",
+            },
+            "new_importance": {
+                "type": "integer",
+                "description": "新重要性 1-5。edit 时可选，更新记忆文件中所有条目的重要性",
+            },
+            "tags_filter": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "标签筛选列表。search 时可选，只返回包含指定标签的记忆结果",
             },
             "src": {
                 "type": "string",
@@ -175,24 +194,9 @@ class MemoryTool(BaseTool):
                 "type": "integer",
                 "description": "图谱扩散最大深度（graph_search 可选，默认 2）",
             },
-            # ── 待办事项参数 ──
-            "task_action": {
-                "type": "string",
-                "enum": ["add", "done", "cancel", "list", "read"],
-                "description": "待办操作: add=新增 / done=完成 / cancel=取消 / list=列出 / read=读取详情",
-            },
-            "trigger_at": {
-                "type": "string",
-                "description": "触发时间 \"HH:MM\" 或 \"YYYY-MM-DD HH:MM\" 或 \"周3 10:00\" 或 \"15 10:00\"（task add 时必填）",
-            },
-            "repeat": {
-                "type": "string",
-                "enum": ["daily", "weekly", "monthly"],
-                "description": "重复模式: daily=每天 / weekly=每周 / monthly=每月（task add 可选，trigger_at设了周几/几日则自动识别）",
-            },
             "id": {
                 "type": "string",
-                "description": "记忆/任务标识。memory add 时作标题（可选，不填自动生成）；read/del/edit、task done/cancel/read 时必填",
+                "description": "记忆标识。add 时作标题（可选，不填自动生成）；read/del/edit 时必填",
             },
         },
         "required": ["operation"],
@@ -208,6 +212,10 @@ class MemoryTool(BaseTool):
         new_string: str | None = None,
         include_all: bool = False,
         importance: int = 3,
+        tags: list[str] | None = None,
+        new_tags: list[str] | None = None,
+        new_importance: int | None = None,
+        tags_filter: list[str] | None = None,
         src: str | None = None,
         tgt: str | None = None,
         sources: list[str] | None = None,
@@ -215,9 +223,6 @@ class MemoryTool(BaseTool):
         seed: str | None = None,
         query_tags: list[str] | None = None,
         max_depth: int = 2,
-        task_action: str | None = None,
-        trigger_at: str | None = None,
-        repeat: str | None = None,
         id: str | None = None,
         **kwargs,
     ) -> dict:
@@ -233,7 +238,8 @@ class MemoryTool(BaseTool):
             # type 可选，默认 fact；id 可选，不填自动生成
             _type = type or "fact"
             _id = id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
-            return await self._add_memory(memory_dir, index, _id, content, _type, importance)
+            _tags = tags or []
+            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags)
 
         if operation == "read":
             _read_id = id or ""
@@ -247,7 +253,7 @@ class MemoryTool(BaseTool):
         if operation == "search":
             if not query:
                 return {"status": "error", "error": "search 操作需要 query 参数"}
-            return await self._search_memory(memory_dir, index, query)
+            return await self._search_memory(memory_dir, index, query, tags_filter)
 
         if operation == "list":
             return await self._list_memories(memory_dir, index, include_all)
@@ -263,17 +269,16 @@ class MemoryTool(BaseTool):
 
         if operation == "edit":
             _edit_id = id or ""
-            if not _edit_id or not old_string:
+            if not _edit_id:
                 return {
                     "status": "error",
-                    "error": "edit 操作需要 id, old_string 参数",
+                    "error": "edit 操作需要 id 参数",
                 }
-            if new_string is None:
-                new_string = ""
             _file = _resolve_memory_file(memory_dir, _edit_id)
             if not _file:
                 return {"status": "error", "error": f"未找到 id='{_edit_id}' 的记忆"}
-            return await self._edit_memory(memory_dir, index, _file.stem, old_string, new_string)
+            return await self._edit_memory(memory_dir, index, _file.stem,
+                old_string or "", new_string, new_tags, new_importance)
 
         # ── Brain Tools ───────────────────────────────────────
 
@@ -293,36 +298,6 @@ class MemoryTool(BaseTool):
         if operation == "prune":
             return await self._prune_memory(memory_dir, index)
 
-        # ── 待办事项 ──────────────────────────────────────────
-
-        if operation == "task":
-            from core.memory.reminder import TaskManager
-            tm = TaskManager(memory_dir)
-            if task_action == "add":
-                _task_title = content or ""
-                if not _task_title or not trigger_at:
-                    return {"status": "error", "error": "task add 需要 content（提醒内容）和 trigger_at 参数"}
-                return await tm.add(title=_task_title, trigger_at=trigger_at, content=_task_title, repeat=repeat)
-            if task_action == "done":
-                _task_id = id or ""
-                if not _task_id:
-                    return {"status": "error", "error": "task done 需要 id 参数"}
-                return await tm.done(_task_id)
-            if task_action == "cancel":
-                _task_id = id or ""
-                if not _task_id:
-                    return {"status": "error", "error": "task cancel 需要 id 参数"}
-                return await tm.cancel(_task_id)
-            if task_action == "list":
-                status_filter = kwargs.get("status", "")
-                return await tm.list_tasks(status_filter)
-            if task_action == "read":
-                _task_id = id or ""
-                if not _task_id:
-                    return {"status": "error", "error": "task read 需要 id 参数"}
-                return await tm.read_task(_task_id)
-            return {"status": "error", "error": f"不支持的任务操作: {task_action}"}
-
         if operation == "graph_search":
             if not seed:
                 return {"status": "error", "error": "graph_search 操作需要 seed 参数"}
@@ -338,11 +313,13 @@ class MemoryTool(BaseTool):
         content: str,
         type: str,
         importance: int,
+        tags: list[str] | None = None,
     ) -> dict:
         """新增记忆
 
         ★ B4: 自动查重 — 如果发现相似内容 >= 0.7，追加到已有文件而非新建
         """
+        _tags = tags or []
         # ★ B4: 自动查重
         similar = await self._check_similar_internal(memory_dir, content)
         if similar and similar["similarity"] >= 0.7:
@@ -350,7 +327,7 @@ class MemoryTool(BaseTool):
             timestamp = now.strftime("%Y-%m-%d %H:%M")
             stars = "★" * importance + "☆" * (5 - importance)
             new_string = f"\n- [{timestamp}] [agent] [{type:<12}] {stars} {content}\n"
-            return await self._append_to_existing(memory_dir, index, similar["file"], new_string)
+            return await self._append_to_existing(memory_dir, index, similar["file"], new_string, _tags)
 
         file_path = memory_dir / f"{title}.md"
         now = datetime.now()
@@ -367,7 +344,7 @@ class MemoryTool(BaseTool):
             if not file_path.exists():
                 # ★ B1: 新文件 → 注入 YAML frontmatter
                 from core.memory.yaml_handler import YamlFrontmatter
-                fm_metadata = {"type": type, "source": "agent", "tags": []}
+                fm_metadata = {"type": type, "source": "agent", "tags": _tags}
                 full_content = YamlFrontmatter.inject(entry, fm_metadata)
                 file_path.write_text(full_content, encoding="utf-8")
             else:
@@ -385,6 +362,7 @@ class MemoryTool(BaseTool):
                 "entries": self._count_entries(file_path),
                 "last_updated": now.strftime("%Y-%m-%d"),
                 "last_referenced": now.strftime("%Y-%m-%d"),
+                "tags": _tags,
                 "summary": content[:30],
                 "section": self._TYPE_TO_SECTION.get(type, "其他"),
             },
@@ -452,10 +430,12 @@ class MemoryTool(BaseTool):
         memory_dir: Path,
         index: MemoryIndex,
         query: str,
+        tags_filter: list[str] | None = None,
     ) -> dict:
         """搜索记忆（跳过 >30 天未引用的文件，搜索不算引用）
 
         使用倒排索引将 O(n*m) 文件遍历 → O(1) 词查找 + O(k) 行读取
+        tags_filter 可选，只返回包含指定标签的记忆
         """
         # 构建或更新倒排索引
         if self._index_dirty or self._inverted_index is None:
@@ -481,7 +461,7 @@ class MemoryTool(BaseTool):
         if not hit_files:
             return {"status": "ok", "result": {"message": "没有找到匹配内容", "count": 0, "results": []}}
 
-        # 过滤 >30 天未引用的文件 + 读取匹配行
+        # 过滤 >30 天未引用的文件 + tags_filter 筛选 + 读取匹配行
         results = []
         now = datetime.now()
         index_data = await index.parse()
@@ -492,9 +472,17 @@ class MemoryTool(BaseTool):
             if last_ref and not self._is_within_days(last_ref, 30, now):
                 continue
 
-            # 只读取命中的行（完整文件只读一次）
             file_path = memory_dir / fname
             content = file_path.read_text("utf-8")
+
+            # tags_filter 筛选
+            if tags_filter:
+                from core.memory.yaml_handler import YamlFrontmatter
+                fm, _ = YamlFrontmatter.extract_io(content)
+                file_tags = set(fm.get("tags", []))
+                if not file_tags & set(tags_filter):
+                    continue
+
             all_lines = content.split("\n")
             matched = [
                 all_lines[ln].strip()
@@ -613,11 +601,14 @@ class MemoryTool(BaseTool):
         index: MemoryIndex,
         title: str,
         old_string: str,
-        new_string: str,
+        new_string: str | None,
+        new_tags: list[str] | None = None,
+        new_importance: int | None = None,
     ) -> dict:
         """编辑记忆
 
         ★ B3: 保护 YAML frontmatter 不变，只修改正文
+        支持通过 new_tags 更新标签，new_importance 更新重要性
         """
         file_path = memory_dir / f"{title}.md"
         if not file_path.exists():
@@ -632,6 +623,34 @@ class MemoryTool(BaseTool):
             from core.memory.yaml_handler import YamlFrontmatter
             fm, body = YamlFrontmatter.extract_io(content)
 
+            # ── 只更新元数据（无需 body 修改）──
+            if not old_string and new_string is None:
+                updates = {}
+                if new_tags is not None:
+                    updates["tags"] = sorted(new_tags)
+                if new_importance is not None:
+                    # 替换所有条目的 ★☆ 模式
+                    new_stars = "★" * new_importance + "☆" * (5 - new_importance)
+                    body = re.sub(r'★+☆*', new_stars, body)
+                if updates:
+                    fm.update(updates)
+                    fm["updated"] = YamlFrontmatter._now_str()
+                    fm["checksum"] = YamlFrontmatter._checksum(body)
+                    import yaml
+                    fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
+                    new_content = f"---\n{fm_str}\n---\n\n{body}\n"
+                    file_path.write_text(new_content, encoding="utf-8")
+                    await index.update_modify(title, memory_dir)
+                    self.invalidate_cache()
+                    return {"status": "ok", "result": f"已更新 {title}.md 元数据"}
+
+            # ── 修改正文 ──
+            if not old_string:
+                return {"status": "error", "error": "edit 操作需要 old_string 参数"}
+
+            if new_string is None:
+                new_string = ""
+
             occurences = body.count(old_string)
             if occurences == 0:
                 return {"status": "error", "error": "未找到匹配的原文"}
@@ -640,10 +659,19 @@ class MemoryTool(BaseTool):
 
             new_body = body.replace(old_string, new_string if new_string else "")
 
+            # 如果有新重要性，替换 ★☆ 模式
+            if new_importance is not None:
+                new_stars = "★" * new_importance + "☆" * (5 - new_importance)
+                new_body = re.sub(r'★+☆*', new_stars, new_body)
+
             # 重建文件内容（保留 frontmatter）
             if fm:
-                fm["updated"] = YamlFrontmatter._now_str()
-                fm["checksum"] = YamlFrontmatter._checksum(new_body)
+                updates = {}
+                if new_tags is not None:
+                    updates["tags"] = sorted(new_tags)
+                updates["updated"] = YamlFrontmatter._now_str()
+                updates["checksum"] = YamlFrontmatter._checksum(new_body)
+                fm.update(updates)
                 import yaml
                 fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
                 new_content = f"---\n{fm_str}\n---\n\n{new_body}\n"
@@ -876,6 +904,7 @@ class MemoryTool(BaseTool):
         index: MemoryIndex,
         filename: str,
         new_string: str,
+        tags: list[str] | None = None,
     ) -> dict:
         """向已存在的记忆文件追加条目（查重命中后使用）"""
         file_path = memory_dir / filename
@@ -884,6 +913,17 @@ class MemoryTool(BaseTool):
         from core.tools.file_lock import LockManager
         lm = await LockManager.get_instance()
         async with lm.acquire(file_path):
+            # 合并 tags 到 frontmatter
+            _tags = tags or []
+            if _tags:
+                from core.memory.yaml_handler import YamlFrontmatter
+                fm, _ = YamlFrontmatter.extract(file_path)
+                existing_tags = set(fm.get("tags", []))
+                new_unique = [t for t in _tags if t not in existing_tags]
+                if new_unique:
+                    YamlFrontmatter.update(file_path, {
+                        "tags": sorted(existing_tags | set(_tags))
+                    })
             with open(file_path, "a", encoding="utf-8") as f:
                 f.write(new_string)
             # 更新 frontmatter 的 checksum 和 updated
@@ -897,6 +937,7 @@ class MemoryTool(BaseTool):
                 "entries": self._count_entries(file_path),
                 "last_updated": now.strftime("%Y-%m-%d"),
                 "last_referenced": now.strftime("%Y-%m-%d"),
+                "tags": tags or [],
                 "summary": new_string.strip()[:30],
                 "section": "其他",
             },

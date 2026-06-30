@@ -26,6 +26,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from core.mcp_server.manager import McpServerManager
+from core.memory.reminder_tool import ReminderTool
 from core.memory.tools import MemoryTool
 from core.permission_mode import PermissionMode
 from core.tools.bash_tools import BashTool
@@ -275,6 +276,7 @@ def create_app() -> FastAPI:
     registry = init_registry(
         DocumentTool(),
         MemoryTool(),
+        ReminderTool(),
         SkillTool(),
         BashTool(),
         SystemTool(),

@@ -21,7 +21,7 @@ class MemoryIndex:
         self._index_path = memory_dir / self.INDEX_FILENAME
 
     async def parse(self) -> dict[str, dict[str, Any]]:
-        """解析 MEMORY.md → {文件名: {条目数, 最后更新, 最后引用, 摘要}}"""
+        """解析 MEMORY.md → {文件名: {条目数, 最后更新, 最后引用, 标签, 摘要}}"""
         if not self._index_path.exists():
             return {}
 
@@ -31,23 +31,52 @@ class MemoryIndex:
             return self._parse_index_content(content)
 
     def _parse_index_content(self, content: str) -> dict[str, dict[str, Any]]:
-        """解析 MEMORY.md 内容"""
+        """解析 MEMORY.md 内容
+
+        兼容新旧两种格式：
+        - 旧格式：5 列（文件 | 条目数 | 最后更新 | 最后引用 | 摘要）
+        - 新格式：6 列（文件 | 条目数 | 最后更新 | 最后引用 | 标签 | 摘要）
+        """
         index: dict[str, dict[str, Any]] = {}
         current_section = ""
+        # 通过分隔线（|---|）的列数检测格式
+        has_tag_column: bool | None = None
 
         for line in content.splitlines():
             line = line.strip()
             if line.startswith("## "):
                 current_section = line[3:].strip()
+            elif line.startswith("|---"):
+                # 检测分隔列数：5 列旧格式 vs 6 列新格式
+                parts = [p for p in line.split("|") if p.strip()]
+                has_tag_column = len(parts) >= 6
             elif line.startswith("| ") and "|" in line[2:]:
                 parts = [p.strip() for p in line.split("|")]
-                if len(parts) >= 6 and parts[1] and parts[1] != "文件":
-                    file_name = parts[1]
+                # parts[0] = ""(leading), parts[1]=文件, ..., parts[-1]=""(trailing)
+                if len(parts) < 3:
+                    continue
+                file_name = parts[1]
+                if not file_name or file_name in ("文件", "(暂无)", "—"):
+                    continue
+
+                if has_tag_column and len(parts) >= 8:
+                    # 新格式：标签列在 parts[5]
                     index[file_name] = {
                         "section": current_section,
                         "entries": parts[2] if len(parts) > 2 else "0",
                         "last_updated": parts[3] if len(parts) > 3 else "",
                         "last_referenced": parts[4] if len(parts) > 4 else "",
+                        "tags": parts[5] if len(parts) > 5 else "",
+                        "summary": parts[6] if len(parts) > 6 else "",
+                    }
+                elif len(parts) >= 7:
+                    # 旧格式：无标签列，parts[5] 是摘要
+                    index[file_name] = {
+                        "section": current_section,
+                        "entries": parts[2] if len(parts) > 2 else "0",
+                        "last_updated": parts[3] if len(parts) > 3 else "",
+                        "last_referenced": parts[4] if len(parts) > 4 else "",
+                        "tags": "",
                         "summary": parts[5] if len(parts) > 5 else "",
                     }
         return index
@@ -97,10 +126,10 @@ class MemoryIndex:
         ]
         for section in sections:
             lines.append(f"## {section['name']}")
-            lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 摘要 |")
-            lines.append("|------|--------|---------|---------|------|")
+            lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 标签 | 摘要 |")
+            lines.append("|------|--------|---------|---------|------|------|")
             if section.get("hint"):
-                lines.append(f"| (暂无) | 0 | - | - | {section['hint']} |")
+                lines.append(f"| (暂无) | 0 | - | - | - | {section['hint']} |")
             lines.append("")
 
         self._index_path.write_text("\n".join(lines), encoding="utf-8")
@@ -115,10 +144,10 @@ class MemoryIndex:
         ]
         for section in sections:
             lines.append(f"## {section['name']}")
-            lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 摘要 |")
-            lines.append("|------|--------|---------|---------|------|")
+            lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 标签 | 摘要 |")
+            lines.append("|------|--------|---------|---------|------|------|")
             if section.get("hint"):
-                lines.append(f"| (暂无) | 0 | - | - | {section['hint']} |")
+                lines.append(f"| (暂无) | 0 | - | - | - | {section['hint']} |")
             lines.append("")
 
         self._index_path.write_text("\n".join(lines), encoding="utf-8")
@@ -150,13 +179,17 @@ class MemoryIndex:
             body_lines = []
             for section, items in sections.items():
                 body_lines.append(f"## {section}")
-                body_lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 摘要 |")
-                body_lines.append("|------|--------|---------|---------|------|")
+                body_lines.append("| 文件 | 条目数 | 最后更新 | 最后引用 | 标签 | 摘要 |")
+                body_lines.append("|------|--------|---------|---------|------|------|")
                 for name, meta in items:
+                    tags_str = meta.get("tags", "")
+                    if isinstance(tags_str, list):
+                        tags_str = ", ".join(tags_str)
                     body_lines.append(
                         f"| {name} | {meta.get('entries', '?')} "
                         f"| {meta.get('last_updated', '-')} "
                         f"| {meta.get('last_referenced', '-')} "
+                        f"| {tags_str} "
                         f"| {meta.get('summary', '')} |"
                     )
                 body_lines.append("")

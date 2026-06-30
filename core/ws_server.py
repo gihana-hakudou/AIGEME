@@ -228,13 +228,20 @@ class WSServer:
                 if isinstance(memory_tool, _MT):
                     memory_tool.set_char_id(character_id)
 
+            # 设置 ReminderTool 的当前角色 ID
+            reminder_tool = self._registry.get("reminder")
+            if reminder_tool:
+                from core.memory.reminder_tool import ReminderTool as _RT
+                if isinstance(reminder_tool, _RT):
+                    reminder_tool.set_char_id(character_id)
+
             # 设置 DocumentTool 的当前角色 ID，确保文件写入按角色隔离
             document_tool = self._registry.get("document")
             if document_tool:
                 from core.tools.document_tools import DocumentTool as _DT
                 if isinstance(document_tool, _DT):
                     document_tool.set_char_id(character_id)
-            _diag("handle_connection: memory_tool & document_tool char_id set")
+            _diag("handle_connection: memory_tool & document_tool & reminder_tool char_id set")
 
             # 初始化持久化
             data_dir = self._project_root / ".AIGEME" / ".data"
