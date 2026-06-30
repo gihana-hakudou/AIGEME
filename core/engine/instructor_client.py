@@ -182,7 +182,6 @@ class InstructorClient:
 
         # 流式 tool_calls 收集（按 index 跟踪跨 chunk 同名工具）
         partial_tool_calls: dict[int, dict] = {}
-        _cancelled_flag = False         # 标记流是否被用户取消（跳过最终 block 发送）
 
         # 构建 OpenAI 格式的 tools 参数（含通用缓存标记）
         openai_tools = None
@@ -242,8 +241,8 @@ class InstructorClient:
             }
         kwargs["extra_body"] = extra_body
 
-        # 非流式：仅由 stream 参数控制，工具调用使用流式收集
-        if not stream:
+        # 有工具调用或用户关闭流式时走非流式
+        if openai_tools or not stream:
             response = await litellm.acompletion(
                 model=model_name,
                 messages=dict_messages,
@@ -290,32 +289,11 @@ class InstructorClient:
             **kwargs,
         )
 
-        # ── 流式读取：带超时轮询，防止单线程后端在长思维链期间堵死 cancel ──
-        # 单线程 llama.cpp 在生成思维链时不 emit chunk，async for 会一直阻塞
-        # 导致 cancel 检查永远跑不到。用 asyncio.wait + 短超时定期轮询。
-        # 注意：不能直接 cancel 生成器 __anext__()，会损坏生成器状态。
-        # 改用同个 read_task 持续等待 + 超时后检查 cancel。
-        _stream_iter = stream.__aiter__()
-        _POLL_INTERVAL = 0.3  # 秒，每 300ms 检查一次 cancel 状态
-        read_task: asyncio.Task | None = None
-        while True:
-            if read_task is None or read_task.done():
-                read_task = asyncio.ensure_future(_stream_iter.__anext__())
-            done, _ = await asyncio.wait([read_task], timeout=_POLL_INTERVAL)
-            if not done:
-                # 超时：无新 chunk 到达（模型仍在生成），检查 cancel
-                if cancelled_check and cancelled_check():
-                    read_task.cancel()
-                    _cancelled_flag = True
-                    await stream.aclose()
-                    break
-                continue  # read_task 继续等，不重建
-            # chunk 到达
-            try:
-                chunk = read_task.result()
-            except StopAsyncIteration:
-                break
-            except asyncio.CancelledError:
+        async for chunk in stream:
+            # 检查取消状态 — 不抛 CancelledError，只关闭流并退出循环
+            # 保持 HTTP 请求正常完成（而非连接断开），让 vLLM 保留 KV 缓存供后续请求复用
+            if cancelled_check and cancelled_check():
+                await stream.aclose()
                 break
 
             choice = chunk.choices[0] if chunk.choices else None
@@ -408,11 +386,6 @@ class InstructorClient:
                             partial_tool_calls[idx]["name"] += tc.function.name
                         if tc.function.arguments:
                             partial_tool_calls[idx]["arguments_str"] += tc.function.arguments
-
-        # ── 用户取消：不发 block，不装配响应，直接返回 None ──
-        # RaActLoop 通过 _cancelled 状态进入取消处理流程
-        if _cancelled_flag:
-            return None
 
         # 最终标记
         if reasoning_content:
