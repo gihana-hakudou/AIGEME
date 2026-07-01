@@ -194,9 +194,9 @@ class MemoryTool(BaseTool):
                 "type": "integer",
                 "description": "图谱扩散最大深度（graph_search 可选，默认 2）",
             },
-            "id": {
+            "title": {
                 "type": "string",
-                "description": "记忆标识。add 时作标题（可选，不填自动生成）；read/del/edit 时必填",
+                "description": "记忆标题/标识。add 时作标题（可选，不填自动生成文件名）；read/del/edit 时必填（填 list/search 返回的 title）",
             },
         },
         "required": ["operation"],
@@ -224,28 +224,31 @@ class MemoryTool(BaseTool):
         query_tags: list[str] | None = None,
         max_depth: int = 2,
         id: str | None = None,
+        title: str | None = None,
         **kwargs,
     ) -> dict:
         memory_dir = _get_memory_dir(char_id=self._char_id)
         index = MemoryIndex(memory_dir)
 
+        # 统一 id/title 查找键（title 优先，id 向后兼容）
+        _key = title or id or ""
+        _key_id = _key  # 用于 add 时作标题/文件名
         if operation == "add":
             if not content:
                 return {
                     "status": "error",
                     "error": "add 操作需要 content（内容）参数",
                 }
-            # type 可选，默认 fact；id 可选，不填自动生成
+            # type 可选，默认 fact；title 可选，不填自动生成
             _type = type or "fact"
-            _id = id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
+            _id = _key_id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
             _tags = tags or []
             return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags)
 
         if operation == "read":
-            _read_id = id or ""
-            if not _read_id:
-                return {"status": "error", "error": "read 操作需要 id 参数"}
-            _file = _resolve_memory_file(memory_dir, _read_id)
+            if not _key:
+                return {"status": "error", "error": "read 操作需要 title 参数"}
+            _file = _resolve_memory_file(memory_dir, _key)
             if not _file:
                 return {"status": "error", "error": f"未找到 id='{_read_id}' 的记忆"}
             return await self._read_memory(memory_dir, index, _file.stem)
@@ -259,22 +262,20 @@ class MemoryTool(BaseTool):
             return await self._list_memories(memory_dir, index, include_all)
 
         if operation == "del":
-            _del_id = id or ""
-            if not _del_id:
-                return {"status": "error", "error": "del 操作需要 id 参数"}
-            _file = _resolve_memory_file(memory_dir, _del_id)
+            if not _key:
+                return {"status": "error", "error": "del 操作需要 title 参数"}
+            _file = _resolve_memory_file(memory_dir, _key)
             if not _file:
                 return {"status": "error", "error": f"未找到 id='{_del_id}' 的记忆"}
             return await self._del_memory(memory_dir, index, _file.stem)
 
         if operation == "edit":
-            _edit_id = id or ""
-            if not _edit_id:
+            if not _key:
                 return {
                     "status": "error",
-                    "error": "edit 操作需要 id 参数",
+                    "error": "edit 操作需要 title 参数",
                 }
-            _file = _resolve_memory_file(memory_dir, _edit_id)
+            _file = _resolve_memory_file(memory_dir, _key)
             if not _file:
                 return {"status": "error", "error": f"未找到 id='{_edit_id}' 的记忆"}
             return await self._edit_memory(memory_dir, index, _file.stem,
@@ -383,7 +384,7 @@ class MemoryTool(BaseTool):
         else:
             logger.warning("[MEMORY_DEBUG] MEMORY.md 不存在！memory_dir=%s", memory_dir)
 
-        return {"status": "ok", "result": {"id": title, "file": f"{title}.md", "added": entry.strip()}}
+        return {"status": "ok", "result": {"id": title, "file": f"{title}.md", "added": entry.strip(), "note": "后续操作请使用 title 参数"}}
 
     async def _read_memory(
         self,
@@ -412,7 +413,7 @@ class MemoryTool(BaseTool):
         # 更新引用时间（MemoryIndex 内部的 RWLock 保护 MEMORY.md）
         await index.update_reference(title)
 
-        result = {"file": f"{title}.md", "content": body.strip()}
+        result = {"id": title, "file": f"{title}.md", "content": body.strip()}
         if fm:
             result["metadata"] = {
                 "type": fm.get("type"),
@@ -492,6 +493,7 @@ class MemoryTool(BaseTool):
 
             if matched:
                 results.append({
+                    "id": file_stem,
                     "file": fname,
                     "match_count": len(matched),
                     "preview": matched[0][:80],
