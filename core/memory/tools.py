@@ -231,6 +231,12 @@ class MemoryTool(BaseTool):
         index = MemoryIndex(memory_dir)
         _tags = tags or []
 
+        # 剥离 .md 后缀（LLM 可能传 test.md 而非 test）
+        if title and title.endswith(".md"):
+            title = title[:-3]
+        if id and id.endswith(".md"):
+            id = id[:-3]
+
         # ── add: id=自动文件名，title=显示标题存 frontmatter ──
         if operation == "add":
             if not content:
