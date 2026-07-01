@@ -149,12 +149,7 @@ class MemoryTool(BaseTool):
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "标签列表。add 时可选，给新增记忆附加标签（如 [工作, 项目]）",
-            },
-            "new_tags": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "新标签列表。edit 时可选，替换记忆的标签",
+                "description": "标签列表。add 时可选，给新增记忆附加标签；edit 时可选，替换记忆的所有标签（如 [工作, 项目]）",
             },
             "new_importance": {
                 "type": "integer",
@@ -218,7 +213,7 @@ class MemoryTool(BaseTool):
         include_all: bool = False,
         importance: int = 3,
         tags: list[str] | None = None,
-        new_tags: list[str] | None = None,
+        new_tags: list[str] | None = None,  # 向后兼容
         new_importance: int | None = None,
         tags_filter: list[str] | None = None,
         src: str | None = None,
@@ -285,8 +280,9 @@ class MemoryTool(BaseTool):
         if operation == "edit":
             if not _lookup:
                 return {"status": "error", "error": "edit 需要 id 或 title 参数"}
+            _edit_tags = tags if tags is not None else new_tags
             return await self._edit_memory(memory_dir, index, _lookup,
-                old_string or "", new_string, new_tags, new_importance)
+                old_string or "", new_string, _edit_tags, new_importance)
 
         # ── Brain Tools ───────────────────────────────────────
 
@@ -659,6 +655,7 @@ class MemoryTool(BaseTool):
                 if new_tags is not None:
                     updates["tags"] = sorted(new_tags)
                 if new_importance is not None:
+                    updates["importance"] = new_importance
                     # 替换所有条目的 ★☆ 模式
                     new_stars = "★" * new_importance + "☆" * (5 - new_importance)
                     body = re.sub(r'★+☆*', new_stars, body)
@@ -699,6 +696,8 @@ class MemoryTool(BaseTool):
                 updates = {}
                 if new_tags is not None:
                     updates["tags"] = sorted(new_tags)
+                if new_importance is not None:
+                    updates["importance"] = new_importance
                 updates["updated"] = YamlFrontmatter._now_str()
                 updates["checksum"] = YamlFrontmatter._checksum(new_body)
                 fm.update(updates)
