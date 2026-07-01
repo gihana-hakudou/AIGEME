@@ -132,11 +132,11 @@ class MemoryTool(BaseTool):
             },
             "old_string": {
                 "type": "string",
-                "description": "被替换的原文。edit 时必填",
+                "description": "被替换的原文。仅编辑正文内容时需要（修改标签/重要度时无需此参数）",
             },
             "new_string": {
                 "type": "string",
-                "description": "替换后的新内容 (edit 时必填，可传空字符串删除原文)",
+                "description": "替换后的新内容。仅编辑正文内容时需要（可传空字符串删除原文；修改标签/重要度时无需此参数）",
             },
             "include_all": {
                 "type": "boolean",
