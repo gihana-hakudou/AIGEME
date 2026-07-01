@@ -18,7 +18,7 @@ class YamlFrontmatter:
     # 必须字段
     REQUIRED_FIELDS = ["id", "type", "created", "checksum"]
     # 可选字段
-    OPTIONAL_FIELDS = ["updated", "tags", "links", "source", "round", "status"]
+    OPTIONAL_FIELDS = ["updated", "tags", "links", "source", "round", "status", "title"]
     # 允许的类型枚举
     VALID_TYPES = {"event", "fact", "process", "emotion", "reflection", "decision", "summary", "preference"}
     # 允许的状态枚举
@@ -57,6 +57,8 @@ class YamlFrontmatter:
         fm["tags"] = metadata.get("tags", [])
         fm["links"] = metadata.get("links", [])
         fm["status"] = metadata.get("status", "active")
+        if metadata.get("title"):
+            fm["title"] = metadata["title"]
 
         # 序列化 YAML（sort_keys=False 保持字段顺序，allow_unicode 支持中文）
         yaml_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()

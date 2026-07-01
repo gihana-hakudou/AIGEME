@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import os
 import random
 import re
 from collections import deque
@@ -196,7 +197,11 @@ class MemoryTool(BaseTool):
             },
             "title": {
                 "type": "string",
-                "description": "记忆标题/标识。add 时作标题（可选，不填自动生成文件名）；read/del/edit 时必填（填 list/search 返回的 title）",
+                "description": "记忆标题（add 时可选，存入 frontmatter 显示用，同标题自动追加到同一文件）；read/del/edit 时可选（与 id 二选一，按标题查找）",
+            },
+            "id": {
+                "type": "string",
+                "description": "记忆唯一标识（自动生成，8位时间码+随机数）。read/del/edit 时可选（与 title 二选一，优先精确匹配）",
             },
         },
         "required": ["operation"],
@@ -229,29 +234,40 @@ class MemoryTool(BaseTool):
     ) -> dict:
         memory_dir = _get_memory_dir(char_id=self._char_id)
         index = MemoryIndex(memory_dir)
+        _tags = tags or []
 
-        # 统一 id/title 查找键（title 优先，id 向后兼容）
-        _key = title or id or ""
-        _key_id = _key  # 用于 add 时作标题/文件名
+        # ── add: id=自动文件名，title=显示标题存 frontmatter ──
         if operation == "add":
             if not content:
-                return {
-                    "status": "error",
-                    "error": "add 操作需要 content（内容）参数",
-                }
-            # type 可选，默认 fact；title 可选，不填自动生成
+                return {"status": "error", "error": "add 操作需要 content（内容）参数"}
             _type = type or "fact"
-            _id = _key_id or datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
-            _tags = tags or []
-            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags)
+            _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
+            # 同 title 自动追加到已有文件
+            if title:
+                existing = await self._find_by_title(memory_dir, title)
+                if existing:
+                    now = datetime.now()
+                    ts = now.strftime("%Y-%m-%d %H:%M")
+                    stars = "★" * importance + "☆" * (5 - importance)
+                    new_string = f"\n- [{ts}] [agent] [{_type:<12}] {stars} {content}\n"
+                    return await self._append_to_existing(memory_dir, index, existing, new_string, _tags)
+            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, title=title)
+
+        # ── 统一查找：id（文件名精确）or title（frontmatter 搜索）──
+        _lookup = None
+        if id:
+            _f = _resolve_memory_file(memory_dir, id)
+            if _f:
+                _lookup = _f.stem
+        if not _lookup and title:
+            _f = await self._find_by_title(memory_dir, title)
+            if _f:
+                _lookup = _f.stem
 
         if operation == "read":
-            if not _key:
-                return {"status": "error", "error": "read 操作需要 title 参数"}
-            _file = _resolve_memory_file(memory_dir, _key)
-            if not _file:
-                return {"status": "error", "error": f"未找到 id='{_read_id}' 的记忆"}
-            return await self._read_memory(memory_dir, index, _file.stem)
+            if not _lookup:
+                return {"status": "error", "error": "read 需要 id 或 title 参数"}
+            return await self._read_memory(memory_dir, index, _lookup)
 
         if operation == "search":
             if not query:
@@ -262,23 +278,14 @@ class MemoryTool(BaseTool):
             return await self._list_memories(memory_dir, index, include_all)
 
         if operation == "del":
-            if not _key:
-                return {"status": "error", "error": "del 操作需要 title 参数"}
-            _file = _resolve_memory_file(memory_dir, _key)
-            if not _file:
-                return {"status": "error", "error": f"未找到 id='{_del_id}' 的记忆"}
-            return await self._del_memory(memory_dir, index, _file.stem)
+            if not _lookup:
+                return {"status": "error", "error": "del 需要 id 或 title 参数"}
+            return await self._del_memory(memory_dir, index, _lookup)
 
         if operation == "edit":
-            if not _key:
-                return {
-                    "status": "error",
-                    "error": "edit 操作需要 title 参数",
-                }
-            _file = _resolve_memory_file(memory_dir, _key)
-            if not _file:
-                return {"status": "error", "error": f"未找到 id='{_edit_id}' 的记忆"}
-            return await self._edit_memory(memory_dir, index, _file.stem,
+            if not _lookup:
+                return {"status": "error", "error": "edit 需要 id 或 title 参数"}
+            return await self._edit_memory(memory_dir, index, _lookup,
                 old_string or "", new_string, new_tags, new_importance)
 
         # ── Brain Tools ───────────────────────────────────────
@@ -315,10 +322,12 @@ class MemoryTool(BaseTool):
         type: str,
         importance: int,
         tags: list[str] | None = None,
+        display_title: str | None = None,
     ) -> dict:
         """新增记忆
 
         ★ B4: 自动查重 — 如果发现相似内容 >= 0.7，追加到已有文件而非新建
+        title: 文件名（自动生成的时间戳），display_title: 显示标题（存入 frontmatter）
         """
         _tags = tags or []
         # ★ B4: 自动查重
@@ -346,6 +355,8 @@ class MemoryTool(BaseTool):
                 # ★ B1: 新文件 → 注入 YAML frontmatter
                 from core.memory.yaml_handler import YamlFrontmatter
                 fm_metadata = {"type": type, "source": "agent", "tags": _tags}
+                if display_title:
+                    fm_metadata["title"] = display_title
                 full_content = YamlFrontmatter.inject(entry, fm_metadata)
                 file_path.write_text(full_content, encoding="utf-8")
             else:
@@ -384,7 +395,10 @@ class MemoryTool(BaseTool):
         else:
             logger.warning("[MEMORY_DEBUG] MEMORY.md 不存在！memory_dir=%s", memory_dir)
 
-        return {"status": "ok", "result": {"id": title, "file": f"{title}.md", "added": entry.strip(), "note": "后续操作请使用 title 参数"}}
+        result_parts = {"id": title, "file": f"{title}.md", "added": entry.strip()}
+        if display_title:
+            result_parts["title"] = display_title
+        return {"status": "ok", "result": result_parts}
 
     async def _read_memory(
         self,
@@ -419,11 +433,14 @@ class MemoryTool(BaseTool):
                 "type": fm.get("type"),
                 "created": fm.get("created"),
                 "updated": fm.get("updated"),
+                "title": fm.get("title"),
                 "tags": fm.get("tags", []),
                 "links": fm.get("links", []),
                 "source": fm.get("source"),
                 "status": fm.get("status"),
             }
+            if fm.get("title"):
+                result["title"] = fm["title"]
         return {"status": "ok", "result": result}
 
     async def _search_memory(
@@ -492,8 +509,18 @@ class MemoryTool(BaseTool):
             ]
 
             if matched:
+                # 读取 frontmatter 获取 title
+                _title = file_stem
+                try:
+                    from core.memory.yaml_handler import YamlFrontmatter
+                    _fm, _ = YamlFrontmatter.extract_io(content)
+                    if _fm.get("title"):
+                        _title = _fm["title"]
+                except Exception:
+                    pass
                 results.append({
                     "id": file_stem,
+                    "title": _title,
                     "file": fname,
                     "match_count": len(matched),
                     "preview": matched[0][:80],
@@ -685,6 +712,25 @@ class MemoryTool(BaseTool):
         await index.update_modify(title, memory_dir)
         self.invalidate_cache()
         return {"status": "ok", "result": f"已编辑 {title}.md"}
+
+    # ── 按标题查找（frontmatter.title）───────────────
+
+    async def _find_by_title(self, memory_dir: Path, title: str) -> str | None:
+        """搜索所有记忆文件的 frontmatter，返回第一个 title 匹配的文件名（不含 .md）"""
+        if not self._inverted_index or self._index_dirty:
+            self._inverted_index = await self._build_inverted_index(memory_dir)
+            self._index_dirty = False
+        for fname in list(self._inverted_index.get("__all__", {})) if "__all__" in self._inverted_index else os.listdir(memory_dir):
+            if not fname.endswith(".md"):
+                continue
+            try:
+                from core.memory.yaml_handler import YamlFrontmatter
+                fm, _ = YamlFrontmatter.extract(file_path=memory_dir / fname)
+                if fm.get("title") == title:
+                    return fname.replace(".md", "")
+            except Exception:
+                continue
+        return None
 
     # ── Graph Search (图谱扩散检索) ─────────────────────────
 
