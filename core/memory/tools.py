@@ -249,7 +249,7 @@ class MemoryTool(BaseTool):
                     now = datetime.now()
                     ts = now.strftime("%Y-%m-%d %H:%M")
                     stars = "★" * importance + "☆" * (5 - importance)
-                    new_string = f"\n- [{ts}] [agent] [{_type:<12}] {stars} {content}\n"
+                    new_string = f"\n- [{ts}] [agent] [{_type}] {stars} {content}\n"
                     return await self._append_to_existing(memory_dir, index, existing, new_string, _tags)
             return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, title=title)
 
@@ -336,7 +336,7 @@ class MemoryTool(BaseTool):
             now = datetime.now()
             timestamp = now.strftime("%Y-%m-%d %H:%M")
             stars = "★" * importance + "☆" * (5 - importance)
-            new_string = f"\n- [{timestamp}] [agent] [{type:<12}] {stars} {content}\n"
+            new_string = f"\n- [{timestamp}] [agent] [{type}] {stars} {content}\n"
             return await self._append_to_existing(memory_dir, index, similar["file"], new_string, _tags)
 
         file_path = memory_dir / f"{title}.md"
@@ -345,7 +345,7 @@ class MemoryTool(BaseTool):
         stars = "★" * importance + "☆" * (5 - importance)
 
         # 代码自动注入元数据
-        entry = f"- [{timestamp}] [agent] [{type:<12}] {stars} {content}\n"
+        entry = f"- [{timestamp}] [agent] [{type}] {stars} {content}\n"
 
         # 文件写锁保护追加操作
         from core.tools.file_lock import LockManager
@@ -354,7 +354,7 @@ class MemoryTool(BaseTool):
             if not file_path.exists():
                 # ★ B1: 新文件 → 注入 YAML frontmatter
                 from core.memory.yaml_handler import YamlFrontmatter
-                fm_metadata = {"type": type, "source": "agent", "tags": _tags}
+                fm_metadata = {"type": type, "source": "agent", "tags": _tags, "importance": importance}
                 if display_title:
                     fm_metadata["title"] = display_title
                 full_content = YamlFrontmatter.inject(entry, fm_metadata)
@@ -431,6 +431,7 @@ class MemoryTool(BaseTool):
         if fm:
             result["metadata"] = {
                 "type": fm.get("type"),
+                "importance": fm.get("importance", 3),
                 "created": fm.get("created"),
                 "updated": fm.get("updated"),
                 "title": fm.get("title"),

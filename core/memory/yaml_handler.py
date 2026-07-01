@@ -57,6 +57,8 @@ class YamlFrontmatter:
         fm["tags"] = metadata.get("tags", [])
         fm["links"] = metadata.get("links", [])
         fm["status"] = metadata.get("status", "active")
+        if metadata.get("importance") is not None:
+            fm["importance"] = metadata["importance"]
         if metadata.get("title"):
             fm["title"] = metadata["title"]
 
