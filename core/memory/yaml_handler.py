@@ -393,7 +393,7 @@ class YamlFrontmatter:
         if ".." in target or "/" in target or "\\" in target:
             raise ValueError(f"路径穿越攻击拦截: {target}")
 
-        sanitized = re.sub(r'[^a-zA-Z0-9_\u4e00-\u9fff\-]', "", target)
+        sanitized = re.sub(r'[^a-zA-Z0-9_\u4e00-\u9fff\- \[\]]', "", target)
         if not sanitized:
             raise ValueError(f"不合法的链接目标: {target}")
         return sanitized
