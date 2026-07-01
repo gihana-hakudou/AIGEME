@@ -240,6 +240,10 @@ class MemoryTool(BaseTool):
             # 同 title 自动追加到已有文件
             if title:
                 existing = await self._find_by_title(memory_dir, title)
+                if not existing:
+                    existing = _resolve_memory_file(memory_dir, title)
+                    if existing:
+                        existing = existing.stem
                 if existing:
                     now = datetime.now()
                     ts = now.strftime("%Y-%m-%d %H:%M")
@@ -258,6 +262,11 @@ class MemoryTool(BaseTool):
             _f = await self._find_by_title(memory_dir, title)
             if _f:
                 _lookup = _f.stem
+            else:
+                # 回退：按文件名匹配（兼容 title=文件名 的老记忆）
+                _f = _resolve_memory_file(memory_dir, title)
+                if _f:
+                    _lookup = _f.stem
 
         if operation == "read":
             if not _lookup:
@@ -543,6 +552,7 @@ class MemoryTool(BaseTool):
         logger.info("[MEMORY_DEBUG] list → MEMORY.md 大小=%d 字节, 条目行数=%d",
             len(content), entry_count)
 
+        entries: list[dict] = []
         if not include_all:
             # 过滤过期文件 + 已归档条目
             index_data = await index.parse()
@@ -552,17 +562,26 @@ class MemoryTool(BaseTool):
                 if line.startswith("| ") and "|" in line[2:]:
                     parts = [p.strip() for p in line.split("|")]
                     if len(parts) >= 5 and parts[1]:
+                        _id = parts[1]
                         # 过滤过期文件
-                        last_ref = index_data.get(parts[1], {}).get("last_referenced", "")
+                        last_ref = index_data.get(_id, {}).get("last_referenced", "")
                         if last_ref and not self._is_within_days(last_ref, 30, now):
                             continue
                         # 过滤已归档条目
-                        if index_data.get(parts[1], {}).get("status") == "archived":
+                        if index_data.get(_id, {}).get("status") == "archived":
                             continue
+                        # 收集结构化条目
+                        entries.append({
+                            "id": _id,
+                            "type": index_data.get(_id, {}).get("section", ""),
+                            "tags": index_data.get(_id, {}).get("tags", ""),
+                            "summary": index_data.get(_id, {}).get("summary", ""),
+                            "updated": index_data.get(_id, {}).get("last_updated", ""),
+                        })
                 filtered_lines.append(line)
             content = "\n".join(filtered_lines)
 
-        return {"status": "ok", "result": {"index": content}}
+        return {"status": "ok", "result": {"index": content, "entries": entries}}
 
     async def _del_memory(
         self,
