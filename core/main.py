@@ -40,6 +40,7 @@ from core.tools.mcp_tools import (
 from core.tools.registry import init_registry
 from core.tools.skill_tools import SkillTool
 from core.tools.system_tools import SystemTool
+from core.tools.web_fetch import WebFetchTool
 from core.tools.web_search import WebSearchTool
 from core.plan.tool import PlanAndExecuteTool
 from core.ws_server import WSServer
@@ -281,6 +282,7 @@ def create_app() -> FastAPI:
         BashTool(),
         SystemTool(),
         web_search_tool,
+        WebFetchTool(),
         PlanAndExecuteTool(),
         McpAddServerTool(),
         McpUpdateServerTool(),

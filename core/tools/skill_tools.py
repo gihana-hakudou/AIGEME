@@ -129,9 +129,13 @@ class SkillTool(BaseTool):
         **kwargs,
     ) -> dict:
         if not self._manager:
-            return {"status": "ok", "result": {"count": 0, "results": []}}
+            return {"status": "ok", "result": {"count": 0, "results": []}, "output_type": "skill_search"}
         if operation == "search":
-            return await self._manager.search(query or "")
+            result = await self._manager.search(query or "")
+            result["output_type"] = "skill_search"
+            return result
         if operation == "use":
-            return await self._manager.use(name or "")
+            result = await self._manager.use(name or "")
+            result["output_type"] = "skill_content"
+            return result
         return {"status": "error", "error": f"未知操作: {operation}"}

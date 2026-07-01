@@ -193,9 +193,14 @@ def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
             # output_type = "skill_search" → 技能列表
             if output_type == "skill_search":
                 results = inner_result.get("results", [])
-                lines = [f"找到 {inner_result.get('count', len(results))} 个技能"]
+                count = inner_result.get("count", len(results))
+                if count == 0:
+                    return "没有找到匹配的技能，尝试换个关键词搜索，或者查看已有技能的文档"
+                lines = [f"找到 {count} 个技能:"]
                 for r in results[:20]:
                     lines.append(f"  - {r.get('name', '?')}: {r.get('description', '')}")
+                if count > 20:
+                    lines.append(f"  ... 还有 {count - 20} 个技能未显示")
                 return "\n".join(lines)
 
             # output_type = "skill_content" → 技能详情
