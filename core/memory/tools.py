@@ -256,7 +256,7 @@ class MemoryTool(BaseTool):
                     stars = "★" * importance + "☆" * (5 - importance)
                     new_string = f"\n- [{ts}] [agent] [{_type}] {stars} {content}\n"
                     return await self._append_to_existing(memory_dir, index, existing, new_string, _tags)
-            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, title=title)
+            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, display_title=title)
 
         # ── 统一查找：id（文件名精确）or title（frontmatter 搜索）──
         _lookup = None
