@@ -144,10 +144,13 @@ class MemoryContextTracker:
         # ── 方式 1：graph_search（图谱扩散）──────────────────
         for seed in seeds:
             try:
-                gr = await memory_tool._graph_search_memory(
-                    memory_dir, seed,
-                    query_tags=None, max_depth=2, max_results=5,
+                from core.memory.index import MemoryIndex
+                idx = MemoryIndex(memory_dir)
+                gr_resp = await memory_tool._graph_search(
+                    memory_dir, idx, seed,
+                    query_tags=None, max_depth=2,
                 )
+                gr = gr_resp.get("result", {}).get("results", [])
                 for r in gr:
                     fname = r.get("file", "")
                     if fname not in seen_files:
@@ -162,7 +165,7 @@ class MemoryContextTracker:
                             r["relevance"] = r.get("relevance", 0) + (imp - 1) * 0.1
                         results.append(r)
             except AttributeError:
-                logger.debug("[MEMTRACK] _graph_search_memory 不可用，跳过图谱检索")
+                logger.debug("[MEMTRACK] _graph_search 不可用，跳过图谱检索")
                 break
             except Exception:
                 logger.debug("[MEMTRACK] graph_search(%s) 失败, 跳过", seed, exc_info=True)

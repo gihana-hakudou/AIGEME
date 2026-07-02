@@ -40,31 +40,13 @@ class MemoryTool(BaseTool):
 
     name = "memory"
     description = (
-        "长期记忆操作。支持添加/读取/搜索/浏览/删除/编辑/链接/审计/合并/清理/图谱检索记忆。\n\n"
-        "## 记忆行为规范\n\n"
-        "你具备自主管理长期记忆的能力。请遵循以下规范：\n\n"
-        "### 写入流程\n"
-        "1. 当学到新信息时，直接调用 `add` 新增记忆。系统会自动检查是否已存在相似内容，\n"
-        "   若相似度 >= 0.7 则会自动合并到已有文件，无需你手动查重。\n"
-        "2. 更新已有记忆时，调用 `edit` 修改具体内容。编辑只在正文中生效，不影响元数据。\n"
-        "3. `add` 时建议填写 `type`（记忆类型）和 `importance`（重要性 1-5，\n"
-        "   1=临时, 2=低价值, 3=普通, 4=重要, 5=核心永久保留）。\n\n"
-        "### 关联与链接\n"
-        "1. 你可以在记忆正文中使用 `[[文件名]]` 语法引用其他记忆文件，系统会自动建立双向链接。\n"
-        "2. 需要显式关联两个已有记忆时，调用 `link` 操作。\n\n"
-        "### 定期审计\n"
-        "1. 建议每 15-20 轮对话调用一次 `audit` 检查记忆健康度。\n"
-        "2. `audit` 会返回：断链列表、孤立文件、高相似度文件对。\n"
-        "3. 根据 audit 结果：\n"
-        "   - 断链 → 用 `link` 重新关联或忽略\n"
-        "   - 孤立文件 → 用 `link` 补充关联或 `prune` 清理\n"
-        "   - 高相似度文件 → 用 `merge` 合并\n"
-        "4. 对于已合并的文件，原文件会自动归档到 `_archive/`。\n\n"
-        "### 清理规则\n"
-        "1. `del` 操作为软删除，文件移入 `_archive/` 而非物理删除。\n"
-        "2. `prune` 清理完全孤立的记忆文件（无任何链接关系）。\n"
-        "3. 核心文件（MEMORY.md、LINKS.md）不能被删除。"
+        "长期记忆操作：add/read/search/list/del/edit/link/"
+        "audit/merge/prune/graph_search 共 11 种。"
+        "详细规范请用 skill(operation=\"use\", name=\"memory-management-guide\") 查看完整指南。"
     )
+
+    # 倒排索引构建版本号 — 代码变更时递增，强制所有会话重建索引
+    _INVERTED_INDEX_VERSION = 2
 
     # 类型 → 分区映射表
     _TYPE_TO_SECTION = {
@@ -85,6 +67,7 @@ class MemoryTool(BaseTool):
         self._cache_dirty: bool = True
         self._cache_lock: asyncio.Lock = asyncio.Lock()
         self._inverted_index: dict[str, dict[str, set[int]]] | None = None
+        self._built_index_version: int = 0
         self._index_dirty: bool = True
 
     def set_char_id(self, char_id: str) -> None:
@@ -107,7 +90,8 @@ class MemoryTool(BaseTool):
     def invalidate_cache(self) -> None:
         """使缓存失效，下次 get_index_text 时重新从磁盘加载"""
         self._cache_dirty = True
-        self._index_dirty = True  # ★ 新增：倒排索引标记脏
+        self._inverted_index = None
+        self._index_dirty = True
 
     parameters = {
         "type": "object",
@@ -132,11 +116,11 @@ class MemoryTool(BaseTool):
             },
             "old_string": {
                 "type": "string",
-                "description": "被替换的原文。仅编辑正文内容时需要（修改标签/重要度时无需此参数）",
+                "description": "编辑正文时传原文（修改标签/重要度时无需此参数）",
             },
             "new_string": {
                 "type": "string",
-                "description": "替换后的新内容。仅编辑正文内容时需要（可传空字符串删除原文；修改标签/重要度时无需此参数）",
+                "description": "编辑正文时传新内容（可传空字符串删除原文；改标签/重要度时无需此参数）",
             },
             "include_all": {
                 "type": "boolean",
@@ -144,7 +128,7 @@ class MemoryTool(BaseTool):
             },
             "importance": {
                 "type": "integer",
-                "description": "重要性 1-5（add 可选，默认 3）。\n1=临时/一次性的信息\n2=低价值参考\n3=普通记忆（默认）\n4=重要信息\n5=核心/永久保存，永不过时",
+                "description": "文件级重要度 1-5。新文件 add 时必须传；追加到已有文件时请忽略此参数（系统不会更新）。\n1=临时 / 2=低价值 / 3=普通 / 4=重要 / 5=核心永久",
             },
             "tags": {
                 "type": "array",
@@ -153,7 +137,7 @@ class MemoryTool(BaseTool):
             },
             "new_importance": {
                 "type": "integer",
-                "description": "新重要性 1-5。edit 时可选，更新记忆文件中所有条目的重要性",
+                "description": "新重要度 1-5。edit 时可选，更新记忆文件的整体重要度",
             },
             "tags_filter": {
                 "type": "array",
@@ -162,11 +146,11 @@ class MemoryTool(BaseTool):
             },
             "src": {
                 "type": "string",
-                "description": "链接源文件（link 时必填）",
+                "description": "链接源文件名（link 必填，不含 .md 后缀），如 '出差记录' 而非 '出差记录.md'",
             },
             "tgt": {
                 "type": "string",
-                "description": "链接目标文件（link 时必填）",
+                "description": "链接目标文件名（link 必填，不含 .md 后缀）",
             },
             "sources": {
                 "type": "array",
@@ -213,7 +197,6 @@ class MemoryTool(BaseTool):
         include_all: bool = False,
         importance: int = 3,
         tags: list[str] | None = None,
-        new_tags: list[str] | None = None,  # 向后兼容
         new_importance: int | None = None,
         tags_filter: list[str] | None = None,
         src: str | None = None,
@@ -243,7 +226,15 @@ class MemoryTool(BaseTool):
                 return {"status": "error", "error": "add 操作需要 content（内容）参数"}
             _type = type or "fact"
             _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
-            # 同 title 自动追加到已有文件
+
+            # 第一步：内容相似度查重（不依赖是否有 title）
+            similar = await self._check_similar_internal(memory_dir, content)
+            if similar and similar["similarity"] >= 0.7:
+                ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                new_string = f"\n- [{ts}] [agent] [{_type}] {content}\n"
+                return await self._append_to_existing(memory_dir, index, similar["file"], new_string, _tags)
+
+            # 第二步：相似度未命中 → title 路由
             if title:
                 existing = await self._find_by_title(memory_dir, title)
                 if not existing:
@@ -251,11 +242,11 @@ class MemoryTool(BaseTool):
                     if existing:
                         existing = existing.stem
                 if existing:
-                    now = datetime.now()
-                    ts = now.strftime("%Y-%m-%d %H:%M")
-                    stars = "★" * importance + "☆" * (5 - importance)
-                    new_string = f"\n- [{ts}] [agent] [{_type}] {stars} {content}\n"
+                    ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+                    new_string = f"\n- [{ts}] [agent] [{_type}] {content}\n"
                     return await self._append_to_existing(memory_dir, index, existing, new_string, _tags)
+
+            # 第三步：都不命中 → 创建新文件（不传 importance 时默认 3）
             return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, display_title=title)
 
         # ── 统一查找：id（文件名精确）or title（frontmatter 搜索）──
@@ -295,7 +286,7 @@ class MemoryTool(BaseTool):
         if operation == "edit":
             if not _lookup:
                 return {"status": "error", "error": "edit 需要 id 或 title 参数"}
-            _edit_tags = tags if tags is not None else new_tags
+            _edit_tags = tags or []
             return await self._edit_memory(memory_dir, index, _lookup,
                 old_string or "", new_string, _edit_tags, new_importance)
 
@@ -331,32 +322,20 @@ class MemoryTool(BaseTool):
         title: str,
         content: str,
         type: str,
-        importance: int,
+        importance: int = 3,
         tags: list[str] | None = None,
         display_title: str | None = None,
     ) -> dict:
-        """新增记忆
+        """新增记忆文件
 
-        ★ B4: 自动查重 — 如果发现相似内容 >= 0.7，追加到已有文件而非新建
         title: 文件名（自动生成的时间戳），display_title: 显示标题（存入 frontmatter）
         """
         _tags = tags or []
-        # ★ B4: 自动查重
-        similar = await self._check_similar_internal(memory_dir, content)
-        if similar and similar["similarity"] >= 0.7:
-            now = datetime.now()
-            timestamp = now.strftime("%Y-%m-%d %H:%M")
-            stars = "★" * importance + "☆" * (5 - importance)
-            new_string = f"\n- [{timestamp}] [agent] [{type}] {stars} {content}\n"
-            return await self._append_to_existing(memory_dir, index, similar["file"], new_string, _tags)
-
         file_path = memory_dir / f"{title}.md"
         now = datetime.now()
         timestamp = now.strftime("%Y-%m-%d %H:%M")
-        stars = "★" * importance + "☆" * (5 - importance)
 
-        # 代码自动注入元数据
-        entry = f"- [{timestamp}] [agent] [{type}] {stars} {content}\n"
+        entry = f"- [{timestamp}] [agent] [{type}] {content}\n"
 
         # 文件写锁保护追加操作
         from core.tools.file_lock import LockManager
@@ -468,14 +447,26 @@ class MemoryTool(BaseTool):
         tags_filter 可选，只返回包含指定标签的记忆
         """
         # 构建或更新倒排索引
-        if self._index_dirty or self._inverted_index is None:
+        if (self._index_dirty or self._inverted_index is None
+                or self._built_index_version != MemoryTool._INVERTED_INDEX_VERSION):
+            logger.info("[INDEX] search: 重建倒排索引 (old=%d new=%d)",
+                        self._built_index_version, MemoryTool._INVERTED_INDEX_VERSION)
             self._inverted_index = await self._build_inverted_index(memory_dir)
+            self._built_index_version = MemoryTool._INVERTED_INDEX_VERSION
             self._index_dirty = False
 
         # 分词查询
         query_words = self._tokenize(query)
         if not query_words:
             return {"status": "ok", "result": {"message": "没有找到匹配内容", "count": 0, "results": []}}
+
+        # debug: 确认倒排索引中是否有 tags 词
+        for w in query_words:
+            wh = self._inverted_index.get(w, {})
+            if wh:
+                tag_files = [f for f, lns in wh.items() if -1 in lns]
+                if tag_files:
+                    logger.info("[SEARCH_DEBUG] 词 '%s' 命中 tags 索引 → %s", w, tag_files)
 
         # 取查询词的**并集**（任一匹配即加入）
         hit_files: dict[str, set[int]] = {}
@@ -506,21 +497,25 @@ class MemoryTool(BaseTool):
             content = file_path.read_text("utf-8")
 
             # tags_filter 筛选
+            from core.memory.yaml_handler import YamlFrontmatter
             if tags_filter:
-                from core.memory.yaml_handler import YamlFrontmatter
                 fm, _ = YamlFrontmatter.extract_io(content)
                 file_tags = set(fm.get("tags", []))
                 if not file_tags & set(tags_filter):
                     continue
 
-            all_lines = content.split("\n")
-            matched = [
-                all_lines[ln].strip()
-                for ln in sorted(matched_lines)
-                if ln < len(all_lines)
-            ]
+            # 取正文行（倒排索引的行号基于 body，而非全文）
+            fm, body = YamlFrontmatter.extract_io(content)
+            body_lines = body.split("\n")
+            matched = []
+            has_tag_match = False
+            for ln in sorted(matched_lines):
+                if ln >= 0 and ln < len(body_lines):
+                    matched.append(body_lines[ln].strip())
+                elif ln == -1:
+                    has_tag_match = True
 
-            if matched:
+            if matched or has_tag_match:
                 # 读取 frontmatter 获取 title
                 _title = file_stem
                 try:
@@ -530,12 +525,20 @@ class MemoryTool(BaseTool):
                         _title = _fm["title"]
                 except Exception:
                     pass
+
+                # 预览：优先用正文行，纯 tag 匹配则显示 tags 值
+                tag_list = _fm.get("tags", []) or [] if _fm else []
+                if not matched:
+                    preview = f"[tags 匹配] {', '.join(str(t) for t in tag_list)}"
+                else:
+                    preview = matched[0][:80]
+
                 results.append({
                     "id": file_stem,
                     "title": _title,
                     "file": fname,
                     "match_count": len(matched),
-                    "preview": matched[0][:80],
+                    "preview": preview,
                 })
 
         return {"status": "ok", "result": {"count": len(results), "results": results}}
@@ -653,13 +656,11 @@ class MemoryTool(BaseTool):
         title: str,
         old_string: str,
         new_string: str | None,
-        new_tags: list[str] | None = None,
         new_importance: int | None = None,
     ) -> dict:
         """编辑记忆
 
-        ★ B3: 保护 YAML frontmatter 不变，只修改正文
-        支持通过 new_tags 更新标签，new_importance 更新重要性
+        支持通过 tags 更新标签，new_importance 更新重要性
         """
         file_path = memory_dir / f"{title}.md"
         if not file_path.exists():
@@ -677,13 +678,8 @@ class MemoryTool(BaseTool):
             # ── 只更新元数据（无需 body 修改）──
             if not old_string and new_string is None:
                 updates = {}
-                if new_tags is not None:
-                    updates["tags"] = sorted(new_tags)
                 if new_importance is not None:
                     updates["importance"] = new_importance
-                    # 替换所有条目的 ★☆ 模式
-                    new_stars = "★" * new_importance + "☆" * (5 - new_importance)
-                    body = re.sub(r'★+☆*', new_stars, body)
                 if updates:
                     fm.update(updates)
                     fm["updated"] = YamlFrontmatter._now_str()
@@ -711,16 +707,9 @@ class MemoryTool(BaseTool):
 
             new_body = body.replace(old_string, new_string if new_string else "")
 
-            # 如果有新重要性，替换 ★☆ 模式
-            if new_importance is not None:
-                new_stars = "★" * new_importance + "☆" * (5 - new_importance)
-                new_body = re.sub(r'★+☆*', new_stars, new_body)
-
             # 重建文件内容（保留 frontmatter）
             if fm:
                 updates = {}
-                if new_tags is not None:
-                    updates["tags"] = sorted(new_tags)
                 if new_importance is not None:
                     updates["importance"] = new_importance
                 updates["updated"] = YamlFrontmatter._now_str()
@@ -779,17 +768,44 @@ class MemoryTool(BaseTool):
         graph = await lg.parse_links()
         forward = graph.get("forward", {})
 
-        # 检查 seed 是否在图谱中
+        # 检查 seed 是否在图谱中（精确匹配）
         if seed in forward or any(seed in targets for targets in forward.values()):
             results = await self._graph_search_memory(
                 memory_dir, seed, query_tags, max_depth,
             )
+            method = "graph_search"
         else:
-            # seed 不在图谱中，降级为标签搜索
-            if query_tags:
-                results = await self._tag_search(memory_dir, query_tags)
+            # 模糊匹配：在所有节点名中找包含 seed 的
+            all_nodes: set[str] = set(forward.keys())
+            for targets in forward.values():
+                all_nodes.update(targets)
+            fuzzy_match: str | None = None
+            for node in sorted(all_nodes):
+                if seed in node or node in seed:
+                    fuzzy_match = node
+                    break
+
+            if fuzzy_match:
+                results = await self._graph_search_memory(
+                    memory_dir, fuzzy_match, query_tags, max_depth,
+                )
+                method = "graph_search_fuzzy"
             else:
+                # 降级：正文搜索（含 tags）
+                sr = await self._search_memory(memory_dir, index, seed)
+                search_results = sr.get("result", {}).get("results", [])
                 results = []
+                for r in search_results:
+                    results.append({
+                        "file": r.get("file", ""),
+                        "depth": 0,
+                        "path": "(内容匹配)",
+                        "relevance": 0.5,
+                        "preview": r.get("preview", "")[:100],
+                        "tags": [],
+                        "type": "",
+                    })
+                method = "content_fallback"
 
         return {
             "status": "ok",
@@ -797,15 +813,11 @@ class MemoryTool(BaseTool):
                 "message": "没有找到匹配内容",
                 "count": 0,
                 "results": [],
-                "method": "graph_search" if (
-                    seed in forward or any(seed in targets for targets in forward.values())
-                ) else "tag_fallback",
+                "method": method,
             } if not results else {
                 "count": len(results),
                 "results": results,
-                "method": "graph_search" if (
-                    seed in forward or any(seed in targets for targets in forward.values())
-                ) else "tag_fallback",
+                "method": method,
             }),
         }
 
@@ -947,8 +959,12 @@ class MemoryTool(BaseTool):
             return None
 
         # 搜索内容相似度
-        if self._index_dirty or self._inverted_index is None:
+        if (self._index_dirty or self._inverted_index is None
+                or self._built_index_version != MemoryTool._INVERTED_INDEX_VERSION):
+            logger.info("[INDEX] similar: 重建倒排索引 (old=%d new=%d)",
+                        self._built_index_version, MemoryTool._INVERTED_INDEX_VERSION)
             self._inverted_index = await self._build_inverted_index(memory_dir)
+            self._built_index_version = MemoryTool._INVERTED_INDEX_VERSION
             self._index_dirty = False
 
         hit_files: dict[str, set[int]] | None = None
@@ -1017,7 +1033,15 @@ class MemoryTool(BaseTool):
         )
 
         self.invalidate_cache()
-        return {"status": "ok", "result": {"file": filename, "added": new_string.strip()}}
+
+        from core.memory.yaml_handler import YamlFrontmatter as YF
+        fp = memory_dir / f"{title}.md"
+        cur_imp = 3
+        if fp.exists():
+            fm2, _ = YF.extract(fp)
+            cur_imp = fm2.get("importance", 3)
+        return {"status": "ok", "result": {"file": filename, "added": new_string.strip()},
+                "note": f"记忆重要度未变更，当前记忆重要度：{cur_imp}"}
 
     # ── Brain Tools ───────────────────────────────────────────
 
@@ -1142,6 +1166,7 @@ class MemoryTool(BaseTool):
         earliest_created: str | None = None
         merged_tags: set[str] = set()
         merged_type: str = "fact"
+        merged_importance: int = 3
 
         for sp in source_paths:
             content = sp.read_text("utf-8")
@@ -1163,6 +1188,11 @@ class MemoryTool(BaseTool):
             # type 取第一个非空的
             if not merged_type or merged_type == "fact":
                 merged_type = fm.get("type", "fact")
+
+            # importance 取最大值
+            imp = int(fm.get("importance", 3))
+            if imp > merged_importance:
+                merged_importance = imp
 
         merged_body_text = "\n\n---\n\n".join(merged_bodies)
 
@@ -1195,6 +1225,7 @@ class MemoryTool(BaseTool):
                 "source": "agent",
                 "tags": sorted(merged_tags),
                 "links": [],
+                "importance": merged_importance,
             }
             full_content = YamlFrontmatter.inject(merged_body_text, fm_metadata)
             # 覆盖 created 为最早的
@@ -1402,9 +1433,11 @@ class MemoryTool(BaseTool):
     async def _build_inverted_index(self, memory_dir: Path) -> dict:
         """构建 {word: {filename: {line_indices}}} 倒排索引
 
-        只索引以 "- [" 开头的记忆行（跳过 MEMORY.md 等元数据文件），逐文件加读锁
+        去掉 YAML frontmatter 后索引所有行（包括 markdown 格式内容），逐文件加读锁
         """
         from core.tools.file_lock import LockManager
+        from core.memory.yaml_handler import YamlFrontmatter
+
         lm = await LockManager.get_instance()
         index: dict[str, dict[str, set[int]]] = {}
         for f in sorted(memory_dir.glob("*.md")):
@@ -1412,8 +1445,26 @@ class MemoryTool(BaseTool):
                 continue
             async with lm.acquire_read(f):
                 content = f.read_text("utf-8")
-            for ln, line in enumerate(content.split("\n")):
-                if not line.startswith("- ["):
+            # 去掉 YAML frontmatter，只索引正文
+            fm, body = YamlFrontmatter.extract_io(content)
+            if not body:
+                continue
+
+            # 把 tags 也加入索引（用虚拟行号 -1 标记，只在搜索匹配时生效）
+            raw_tags = fm.get("tags", []) or [] if fm else []
+            tag_words: set[str] = set()
+            for t in raw_tags:
+                if isinstance(t, str):
+                    for w in self._tokenize(t):
+                        tag_words.add(w)
+            for tag_word in tag_words:
+                if tag_word not in index:
+                    index[tag_word] = {}
+                if f.name not in index[tag_word]:
+                    index[tag_word][f.name] = set()
+                index[tag_word][f.name].add(-1)
+            for ln, line in enumerate(body.split("\n")):
+                if not line.strip():
                     continue
                 words = self._tokenize(line)
                 for word in words:
