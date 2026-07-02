@@ -9,6 +9,11 @@ const BlockRenderer = {
         return div.innerHTML;
     },
 
+    /** CSS 属性选择器值转义（防止 tool_call_id 含特殊字符导致选择器失效） */
+    _escapeAttr: function(text) {
+        return String(text).replace(/["\\]/g, '\\$&');
+    },
+
     /** 处理接收到的 Block */
     handle: function(block) {
         // 优先处理 plan 相关 block
@@ -225,11 +230,13 @@ const BlockRenderer = {
             const args = (block.metadata && block.metadata.args) || {};
             const argsStr = JSON.stringify(args, null, 2);
             var callIdx = AIGEME.chat.toolCallCount++;
+            var toolCallId = (block.metadata && block.metadata.tool_call_id) || '';
 
             const item = document.createElement('div');
             item.className = 'tool-call-item';
             item.dataset.tool = name;
             item.dataset.callIndex = callIdx;
+            if (toolCallId) item.dataset.toolCallId = toolCallId;
             item.innerHTML =
                 '<div class="tool-call-header">' +
                     '<span class="tool-call-icon">🔧</span>' +
@@ -257,10 +264,11 @@ const BlockRenderer = {
 
     /** tool_result — 工具结果（更新 tool-call-item 状态，旧 tool-status 回退） */
     _handleToolResult: function(block) {
-        // 优先按 tool_call_id 匹配，否则按倒序查找未完成的 tool
+        // 优先按 metadata.tool_call_id 精确匹配
         var targetItem = null;
-        if (block.tool_call_id) {
-            targetItem = document.querySelector('.tool-call-item[data-call-index="' + block.tool_call_id + '"]');
+        var blockToolCallId = (block.metadata && block.metadata.tool_call_id) || '';
+        if (blockToolCallId) {
+            targetItem = document.querySelector('.tool-call-item[data-tool-call-id="' + this._escapeAttr(blockToolCallId) + '"]');
         }
         if (!targetItem) {
             // 按 tool name 匹配
@@ -303,6 +311,14 @@ const BlockRenderer = {
     _handleTurnEnd: function(block) {
         // 不隐藏设计稿的 think-panel（用户可手动关闭）
         document.getElementById('tool-status')?.classList.add('hidden');
+
+        // ★ 兜底：将所有仍为 running 状态的工具卡片标记为完成
+        // （防止 tool_result block 因网络/序列化问题丢失导致卡片永远卡在"处理中"）
+        var runningCards = document.querySelectorAll('.tool-call-status.running');
+        for (var i = 0; i < runningCards.length; i++) {
+            runningCards[i].className = 'tool-call-status done';
+            runningCards[i].textContent = '完成';
+        }
 
         const cancelled = block.metadata && block.metadata.cancelled;
         AIGEME.chat.isStreaming = false;

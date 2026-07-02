@@ -659,7 +659,11 @@ class RaActLoop:
                         Block(
                             block_type="tool_call",
                             delta=f"{tc.name}{args_preview}",
-                            metadata={"args": tc.arguments},
+                            metadata={
+                                "args": tc.arguments,
+                                "tool_call_id": tool_call_id,
+                                "index": i,
+                            },
                         )
                     )
 
@@ -781,7 +785,11 @@ class RaActLoop:
                         Block(
                             block_type="tool_result",
                             delta=result_summary,
-                            metadata={"full_result": result},
+                            metadata={
+                                "tool_call_id": tool_call_id,
+                                "index": i,
+                                "status": result.get("status", "ok"),
+                            },
                         )
                     )
 

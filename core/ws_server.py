@@ -69,7 +69,8 @@ class Session:
         try:
             await self.ws.send_json(block.model_dump())
         except Exception as e:
-            logger.error("发送 Block 失败: %s", e)
+            logger.error("发送 Block 失败: type=%s, delta_len=%d, error=%s",
+                block.block_type, len(block.delta), e)
 
 
 class WSServer:

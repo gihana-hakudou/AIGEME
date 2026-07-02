@@ -258,7 +258,8 @@ class MemoryTool(BaseTool):
         if not _lookup and title:
             _f = await self._find_by_title(memory_dir, title)
             if _f:
-                _lookup = _f.stem
+                # _find_by_title 已返回 stem（不含 .md 的字符串），直接使用
+                _lookup = _f
             else:
                 # 回退：按文件名匹配（兼容 title=文件名 的老记忆）
                 _f = _resolve_memory_file(memory_dir, title)
@@ -656,6 +657,7 @@ class MemoryTool(BaseTool):
         title: str,
         old_string: str,
         new_string: str | None,
+        tags: list[str] | None = None,
         new_importance: int | None = None,
     ) -> dict:
         """编辑记忆
@@ -678,6 +680,8 @@ class MemoryTool(BaseTool):
             # ── 只更新元数据（无需 body 修改）──
             if not old_string and new_string is None:
                 updates = {}
+                if tags is not None:
+                    updates["tags"] = sorted(tags)
                 if new_importance is not None:
                     updates["importance"] = new_importance
                 if updates:
@@ -691,6 +695,7 @@ class MemoryTool(BaseTool):
                     await index.update_modify(title, memory_dir)
                     self.invalidate_cache()
                     return {"status": "ok", "result": f"已更新 {title}.md 元数据"}
+                return {"status": "ok", "result": "没有需要更新的元数据"}
 
             # ── 修改正文 ──
             if not old_string:
@@ -710,6 +715,8 @@ class MemoryTool(BaseTool):
             # 重建文件内容（保留 frontmatter）
             if fm:
                 updates = {}
+                if tags is not None:
+                    updates["tags"] = sorted(tags)
                 if new_importance is not None:
                     updates["importance"] = new_importance
                 updates["updated"] = YamlFrontmatter._now_str()
