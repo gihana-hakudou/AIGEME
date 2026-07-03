@@ -74,3 +74,6 @@ proj_data.json
 diag_ws.log
 *_test.png
 mikanani_*.png
+
+# Image generation artifacts
+.AIGEME/.skill/image_generation/
