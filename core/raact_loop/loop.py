@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 MAX_RAACT_ROUNDS = 8
 MAX_MULTIMODAL_RETRIES = 1  # 多模态降级重试次数
+MAX_TOOL_CHOICE_RETRIES = 1  # tool_choice 降级重试次数
 
 
 def _strip_images_from_messages(messages: list[dict]) -> bool:
@@ -61,6 +62,19 @@ def _is_multimodal_error(e: Exception) -> bool:
         "images are not supported", "does not support images",
         "does not support multimodal",
     ])
+
+
+def _is_tool_choice_incompatible_error(e: Exception) -> bool:
+    """判断错误是否因 tool_choice 参数与当前模型模式不兼容导致。
+
+    例如 DeepSeek Thinking Mode 不支持 tool_choice=required，
+    会返回 "Thinking mode does not support this tool_choice"。
+    """
+    err_str = str(e).lower()
+    err_type = type(e).__name__
+    is_bad_request = "badrequest" in err_type.lower() or "400" in err_str
+    has_tool_choice_kw = "tool_choice" in err_str or "thinking mode" in err_str
+    return is_bad_request and has_tool_choice_kw
 
 
 def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
@@ -296,6 +310,7 @@ class RaActLoop:
         self._confirm_result_ref = None
         self._reset_confirm_callback = None
         self._memory_force_round = False  # 本轮是否强制 tool_choice=memory
+        self._tool_choice_force_downgraded = False  # tool_choice=required 是否已降级（会话级永久）
 
         # 记忆去重追踪器（按需检索 + 去重注入）
         self._memory_tracker = MemoryContextTracker()
@@ -474,6 +489,7 @@ class RaActLoop:
 
         # 多模态降级重试计数器（跨 round 共享）
         _multimodal_retries = 0
+        _tool_choice_retries = 0
 
         for round_num in range(1, MAX_RAACT_ROUNDS + 1):
             # [检查点1] round 循环开始前
@@ -499,11 +515,20 @@ class RaActLoop:
             if _last_round:
                 _tc = "none"
             elif getattr(self._prompt_assembler, '_force_memory_tool', False):
-                # 触发记忆整理提醒 → 强制调 memory 工具，让 agent 实际执行整理
-                _tc = "required"
-                self._memory_force_round = True  # 标记本轮强制过，检查 LLM 是否听令
-                self._prompt_assembler._force_memory_tool = False
-                logger.info("强制 tool_choice=memory（记忆整理周期触发）")
+                if self._tool_choice_force_downgraded:
+                    # tool_choice 已降级：仅用 prompt 引导代替 required
+                    # （thinking mode 不兼容 tool_choice=required 时走此路径）
+                    _tc = None  # → instructor_client 传 "auto"
+                    self._memory_force_round = True  # 仍标记强制轮，prompt 引导生效
+                    self._prompt_assembler._force_memory_tool = False
+                    logger.info("tool_choice 已降级，本轮仅依赖 prompt 引导调 memory")
+                else:
+                    # 触发记忆整理提醒 → 强制调 memory 工具，让 agent 实际执行整理
+                    # 用指定函数名方式（兼容性优于 "required"）
+                    _tc = {"type": "function", "function": {"name": "memory"}}
+                    self._memory_force_round = True  # 标记本轮强制过，检查 LLM 是否听令
+                    self._prompt_assembler._force_memory_tool = False
+                    logger.info("强制 tool_choice=memory（指定函数名方式，记忆整理周期触发）")
 
             # 调用 Instructor（流式推送 thinking/speech 到前端）
             response: RaActResponse | None = None
@@ -570,6 +595,20 @@ class RaActLoop:
                         )
                         continue  # 重试当前 round
                     logger.info("多模态错误但未找到图片消息，不重试")
+
+                # ── tool_choice 降级检测：指定函数名被拒 → 降级为 prompt 引导 ──
+                # 原因：部分模型在 thinking/reasoning 模式下不支持指定 tool_choice（如 DeepSeek）
+                if _tool_choice_retries < MAX_TOOL_CHOICE_RETRIES and isinstance(_tc, dict) and _is_tool_choice_incompatible_error(e):
+                    self._tool_choice_force_downgraded = True  # 会话级永久降级
+                    _tool_choice_retries += 1
+                    # 重设 _force_memory_tool 让下次迭代走降级路径
+                    self._prompt_assembler._force_memory_tool = True
+                    self._memory_force_round = False  # 清除，让下次迭代重新设置
+                    logger.info(
+                        "tool_choice指定函数名被拒绝（thinking mode 不兼容），降级为 prompt 引导，第 %d/%d 次重试",
+                        _tool_choice_retries, MAX_TOOL_CHOICE_RETRIES,
+                    )
+                    continue  # 重试当前 round
 
                 # 生成用户可读的错误描述
                 # 常见错误类型映射
