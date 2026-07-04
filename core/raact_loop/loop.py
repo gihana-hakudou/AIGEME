@@ -137,22 +137,6 @@ def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
 
         # 2c. result 为 dict → 按 output_type 精确解析
         if isinstance(inner_result, dict):
-            # output_type = "bash" → 解析 stdout/stderr/returncode
-            if output_type == "bash":
-                stdout = inner_result.get("stdout", "")
-                stderr = inner_result.get("stderr", "")
-                rc = inner_result.get("returncode", 0)
-
-                if stdout:
-                    return stdout
-                # Bug 2 fix: rc != 0 时拼接 stderr
-                if rc != 0:
-                    return f"(命令退出码: {rc}) {stderr}".strip()
-                # Bug 2 fix: rc=0 但 stderr 有内容（警告等）
-                if stderr:
-                    return f"(命令成功，stderr: {stderr})"
-                return "(命令执行成功，无输出)"
-
             # output_type = "file_read" → 展示文件摘要
             if output_type == "file_read":
                 fpath = inner_result.get("file", "?")

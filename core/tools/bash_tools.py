@@ -341,21 +341,21 @@ class BashTool(BaseTool):
                 err_detail = (stderr or stdout or "").strip()
                 if not err_detail:
                     err_detail = f"退出码: {result.returncode}"
+                # 失败时返回 stderr，截断到 10000 字符
+                error_text = stderr.strip() or stdout.strip() or ""
+                if not error_text:
+                    error_text = f"退出码: {result.returncode}"
                 return {
                     "status": "error",
-                    "error": f"命令执行失败: {err_detail[:500]}",
-                    "result": {
-                        "stdout": stdout[-8000:],
-                        "stderr": stderr[-4000:],
-                    },
+                    "error": error_text,
+                    "result": error_text[:10000],
                 }
 
+            # 成功：直接返回纯文本 stdout（无格式包装）
+            output = stdout.strip() or stderr.strip() or "(命令执行成功，无输出)"
             return {
                 "status": "ok",
-                "result": {
-                    "stdout": stdout[-8000:],
-                    "stderr": stderr[-4000:],
-                },
+                "result": output[-10000:],
             }
         except subprocess.TimeoutExpired:
             return {"status": "error", "error": f"命令执行超时（{timeout}秒）。可通过 timeout 参数调整超时时间：bash(command='{command[:200]}', timeout=120)"}
