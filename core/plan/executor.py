@@ -2,11 +2,57 @@
 
 import copy
 import logging
+import re
 from typing import Any
 
 from core.raact_loop.loop import RaActLoop
 
 logger = logging.getLogger(__name__)
+
+# 安全的工具子集（白名单）
+SAFE_TOOL_SUBSET: list[str] = [
+    "bash", "read", "write", "glob", "grep",
+    "web_search", "web_fetch", "memory",
+    "task_list", "task_create", "task_update",
+]
+
+
+def _sanitize_sensitive_info(text: str) -> str:
+    """脱敏敏感信息
+
+    替换文本中的 API 密钥、密码、Bearer Token 等敏感信息。
+
+    Args:
+        text: 原始文本
+
+    Returns:
+        脱敏后的文本
+    """
+    # 替换 api_key=xxx 模式
+    text = re.sub(
+        r'(api_key\s*[=:]\s*)["\']?[a-zA-Z0-9_\-]{8,}["\']?',
+        r'\1[API_KEY]',
+        text,
+    )
+    # 替换 password=xxx 模式
+    text = re.sub(
+        r'(password\s*[=:]\s*)["\']?.+?["\']?(?:\s|$)',
+        r'\1[PASSWORD]',
+        text,
+    )
+    # 替换 Bearer token
+    text = re.sub(
+        r'Bearer\s+[a-zA-Z0-9_\-.]{10,}',
+        'Bearer [BEARER_TOKEN]',
+        text,
+    )
+    # 替换 sk- 开头的密钥
+    text = re.sub(
+        r'\bsk[a-zA-Z0-9]{8,}\b',
+        '[API_KEY]',
+        text,
+    )
+    return text
 
 
 class ExecutorFactory:
@@ -49,3 +95,23 @@ class ExecutorFactory:
             token_limit_ratio=self._config.get("token_limit_ratio", 0.9),
             truncate_length=truncate_length,
         )
+
+
+class PlanExecutorFactory(ExecutorFactory):
+    """Plan Executor 工厂 — 与 PlanLoop 配合的子 Agent 创建器"""
+
+    def create_executor(self) -> RaActLoop:
+        """创建执行子任务的 RaActLoop 实例
+
+        与 create() 相同，但提供更明确的语义名称以与 PlanLoop 协作。
+        """
+        return self.create()
+
+
+class PlanExecutor(RaActLoop):
+    """PlanExecutor — 执行子任务的 RaAct 循环
+
+    作为 PlanLoop 的子 Agent 执行器，职责与 RaActLoop 相同。
+    提供别名以在 Plan 上下文中保持语义清晰。
+    """
+    pass

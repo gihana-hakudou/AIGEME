@@ -1,22 +1,26 @@
-"""MemoryTool — 记忆操作打包工具 (add/read/search/list/del/edit/graph_search)"""
+"""MemoryTool — 记忆操作打包工具 (add/read/search/list/del/edit/graph_search)
+
+拆分说明：具体操作实现在 core/memory/ops/ 中各 mixin 文件中。
+本文件仅保留：状态管理、execute 调度、模块级辅助函数。
+"""
 
 import asyncio
 import logging
-import os
 import random
-import re
-from collections import deque
 from datetime import datetime
 from pathlib import Path
 
 from core.memory.index import MemoryIndex
+from core.memory.ops import (
+    MemoryCrudMixin,
+    MemoryGraphMixin,
+    MemoryMergeMixin,
+    MemorySearchMixin,
+    MemoryUtilsMixin,
+)
 from core.tools.base import BaseTool
 
 logger = logging.getLogger(__name__)
-
-# 预加载 jieba 分词器，避免首次调用延迟
-import jieba
-jieba.initialize()
 
 # 记忆存储目录
 MEMORY_BASE = Path(__file__).parent.parent.parent / ".AIGEME" / ".data"
@@ -35,7 +39,14 @@ def _get_memory_dir(user_id: str = "local", char_id: str = "ario") -> Path:
     return d
 
 
-class MemoryTool(BaseTool):
+class MemoryTool(
+    MemoryGraphMixin,
+    MemoryMergeMixin,
+    MemoryCrudMixin,
+    MemorySearchMixin,
+    MemoryUtilsMixin,
+    BaseTool,
+):
     """记忆操作工具"""
 
     name = "memory"
@@ -44,9 +55,6 @@ class MemoryTool(BaseTool):
         "audit/merge/prune/graph_search 共 11 种。"
         "详细规范请用 skill(operation=\"use\", name=\"memory-management-guide\") 查看完整指南。"
     )
-
-    # 倒排索引构建版本号 — 代码变更时递增，强制所有会话重建索引
-    _INVERTED_INDEX_VERSION = 2
 
     # 类型 → 分区映射表
     _TYPE_TO_SECTION = {
@@ -98,8 +106,25 @@ class MemoryTool(BaseTool):
         "properties": {
             "operation": {
                 "type": "string",
-                "enum": ["add", "read", "search", "list", "del", "edit", "link", "audit", "merge", "prune", "graph_search"],
-                "description": "add=新增 / read=读取全文 / search=搜索关键词 / list=浏览索引 / del=删除文件 / edit=编辑文件 / link=建立链接 / audit=扫描审计 / merge=合并文件 / prune=清理孤立文件 / graph_search=图谱扩散检索",
+                "enum": [
+                    "add",
+                    "read",
+                    "search",
+                    "list",
+                    "del",
+                    "edit",
+                    "link",
+                    "audit",
+                    "merge",
+                    "prune",
+                    "graph_search",
+                ],
+                "description": (
+                    "add=新增 / read=读取全文 / search=搜索关键词 / "
+                    "list=浏览索引 / del=删除文件 / edit=编辑文件 / "
+                    "link=建立链接 / audit=扫描审计 / merge=合并文件 / "
+                    "prune=清理孤立文件 / graph_search=图谱扩散检索"
+                ),
             },
             "content": {
                 "type": "string",
@@ -107,8 +132,19 @@ class MemoryTool(BaseTool):
             },
             "type": {
                 "type": "string",
-                "enum": ["fact", "preference", "task_status", "event", "emotion", "reflection", "process"],
-                "description": "记忆类型。add 时可选（默认 fact）。event=事件/fact=事实/process=过程/emotion=情感/reflection=反思",
+                "enum": [
+                    "fact",
+                    "preference",
+                    "task_status",
+                    "event",
+                    "emotion",
+                    "reflection",
+                    "process",
+                ],
+                "description": (
+                    "记忆类型。add 时可选（默认 fact）。"
+                    "event=事件/fact=事实/process=过程/emotion=情感/reflection=反思"
+                ),
             },
             "query": {
                 "type": "string",
@@ -128,7 +164,10 @@ class MemoryTool(BaseTool):
             },
             "importance": {
                 "type": "integer",
-                "description": "文件级重要度 1-5。新文件 add 时必须传；追加到已有文件时请忽略此参数（系统不会更新）。\n1=临时 / 2=低价值 / 3=普通 / 4=重要 / 5=核心永久",
+                "description": (
+                    "文件级重要度 1-5。新文件 add 时必须传；追加到已有文件时请忽略此参数（系统不会更新）。\n"
+                    "1=临时 / 2=低价值 / 3=普通 / 4=重要 / 5=核心永久"
+                ),
             },
             "tags": {
                 "type": "array",
@@ -176,11 +215,17 @@ class MemoryTool(BaseTool):
             },
             "title": {
                 "type": "string",
-                "description": "记忆标题（add 时可选，存入 frontmatter 显示用，同标题自动追加到同一文件）；read/del/edit 时可选（与 id 二选一，按标题查找）",
+                "description": (
+                    "记忆标题（add 时可选，存入 frontmatter 显示用，同标题自动追加到同一文件）；"
+                    "read/del/edit 时可选（与 id 二选一，按标题查找）"
+                ),
             },
             "id": {
                 "type": "string",
-                "description": "记忆唯一标识（自动生成，8位时间码+随机数）。read/del/edit 时可选（与 title 二选一，优先精确匹配）",
+                "description": (
+                    "记忆唯一标识（自动生成，8位时间码+随机数）。"
+                    "read/del/edit 时可选（与 title 二选一，优先精确匹配）"
+                ),
             },
         },
         "required": ["operation"],
@@ -232,7 +277,9 @@ class MemoryTool(BaseTool):
             if similar and similar["similarity"] >= 0.7:
                 ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                 new_string = f"\n- [{ts}] [agent] [{_type}] {content}\n"
-                return await self._append_to_existing(memory_dir, index, similar["file"], new_string, _tags)
+                return await self._append_to_existing(
+                    memory_dir, index, similar["file"], new_string, _tags
+                )
 
             # 第二步：相似度未命中 → title 路由
             if title:
@@ -244,10 +291,21 @@ class MemoryTool(BaseTool):
                 if existing:
                     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
                     new_string = f"\n- [{ts}] [agent] [{_type}] {content}\n"
-                    return await self._append_to_existing(memory_dir, index, existing, new_string, _tags)
+                    return await self._append_to_existing(
+                        memory_dir, index, existing, new_string, _tags
+                    )
 
             # 第三步：都不命中 → 创建新文件（不传 importance 时默认 3）
-            return await self._add_memory(memory_dir, index, _id, content, _type, importance, _tags, display_title=title)
+            return await self._add_memory(
+                memory_dir,
+                index,
+                _id,
+                content,
+                _type,
+                importance,
+                _tags,
+                display_title=title,
+            )
 
         # ── 统一查找：id（文件名精确）or title（frontmatter 搜索）──
         _lookup = None
@@ -288,8 +346,15 @@ class MemoryTool(BaseTool):
             if not _lookup:
                 return {"status": "error", "error": "edit 需要 id 或 title 参数"}
             _edit_tags = tags or []
-            return await self._edit_memory(memory_dir, index, _lookup,
-                old_string or "", new_string, _edit_tags, new_importance)
+            return await self._edit_memory(
+                memory_dir,
+                index,
+                _lookup,
+                old_string or "",
+                new_string,
+                _edit_tags,
+                new_importance,
+            )
 
         # ── Brain Tools ───────────────────────────────────────
 
@@ -303,7 +368,10 @@ class MemoryTool(BaseTool):
 
         if operation == "merge":
             if not sources or not target:
-                return {"status": "error", "error": "merge 操作需要 sources 列表和 target 参数"}
+                return {
+                    "status": "error",
+                    "error": "merge 操作需要 sources 列表和 target 参数",
+                }
             return await self._merge_memory(memory_dir, index, sources, target)
 
         if operation == "prune":
@@ -311,1173 +379,12 @@ class MemoryTool(BaseTool):
 
         if operation == "graph_search":
             if not seed:
-                return {"status": "error", "error": "graph_search 操作需要 seed 参数"}
-            return await self._graph_search(memory_dir, index, seed, query_tags, max_depth)
+                return {
+                    "status": "error",
+                    "error": "graph_search 操作需要 seed 参数",
+                }
+            return await self._graph_search(
+                memory_dir, index, seed, query_tags, max_depth
+            )
 
         return {"status": "error", "error": f"不支持的操作: {operation}"}
-
-    async def _add_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        title: str,
-        content: str,
-        type: str,
-        importance: int = 3,
-        tags: list[str] | None = None,
-        display_title: str | None = None,
-    ) -> dict:
-        """新增记忆文件
-
-        title: 文件名（自动生成的时间戳），display_title: 显示标题（存入 frontmatter）
-        """
-        _tags = tags or []
-        file_path = memory_dir / f"{title}.md"
-        now = datetime.now()
-        timestamp = now.strftime("%Y-%m-%d %H:%M")
-
-        entry = f"- [{timestamp}] [agent] [{type}] {content}\n"
-
-        # 文件写锁保护追加操作
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-        async with lm.acquire(file_path):
-            if not file_path.exists():
-                # ★ B1: 新文件 → 注入 YAML frontmatter
-                from core.memory.yaml_handler import YamlFrontmatter
-                fm_metadata = {"type": type, "source": "agent", "tags": _tags, "importance": importance}
-                if display_title:
-                    fm_metadata["title"] = display_title
-                full_content = YamlFrontmatter.inject(entry, fm_metadata)
-                file_path.write_text(full_content, encoding="utf-8")
-            else:
-                # 已有文件 → 只追加条目（不改变 frontmatter）
-                with open(file_path, "a", encoding="utf-8") as f:
-                    f.write(entry)
-                # 更新 frontmatter 中的 checksum 和 updated
-                from core.memory.yaml_handler import YamlFrontmatter
-                YamlFrontmatter.update(file_path, {})
-
-        # 更新索引
-        await index.update_after_add(
-            title,
-            {
-                "entries": self._count_entries(file_path),
-                "last_updated": now.strftime("%Y-%m-%d"),
-                "last_referenced": now.strftime("%Y-%m-%d"),
-                "tags": _tags,
-                "summary": content[:30],
-                "section": self._TYPE_TO_SECTION.get(type, "其他"),
-            },
-        )
-
-        # 使 MEMORY.md 缓存失效
-        self.invalidate_cache()
-
-        # 诊断：验证 MEMORY.md 是否真的写入了新条目
-        memory_md = memory_dir / "MEMORY.md"
-        if memory_md.exists():
-            md_content = memory_md.read_text("utf-8")
-            if title in md_content:
-                logger.info("[MEMORY_DEBUG] add → MEMORY.md 已包含 '%s' ✓", title)
-            else:
-                logger.warning("[MEMORY_DEBUG] add → MEMORY.md 未包含 '%s' ✗\n%s",
-                    title, md_content[:500])
-        else:
-            logger.warning("[MEMORY_DEBUG] MEMORY.md 不存在！memory_dir=%s", memory_dir)
-
-        result_parts = {"id": title, "file": f"{title}.md", "added": entry.strip()}
-        if display_title:
-            result_parts["title"] = display_title
-        return {"status": "ok", "result": result_parts}
-
-    async def _read_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        title: str,
-    ) -> dict:
-        """读取记忆（自动更新引用时间）
-
-        返回时剥离 YAML frontmatter，metadata 单独返回给 Agent。
-        """
-        file_path = memory_dir / f"{title}.md"
-        if not file_path.exists():
-            return {"status": "error", "error": f"记忆文件不存在: {title}.md"}
-
-        # 文件读锁保护文件内容一致性
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-        async with lm.acquire_read(file_path):
-            content = file_path.read_text("utf-8")
-
-        # ★ B2: 剥离 YAML frontmatter，metadata 单独返回
-        from core.memory.yaml_handler import YamlFrontmatter
-        fm, body = YamlFrontmatter.extract_io(content)
-
-        # 更新引用时间（MemoryIndex 内部的 RWLock 保护 MEMORY.md）
-        await index.update_reference(title)
-
-        result = {"id": title, "file": f"{title}.md", "content": body.strip()}
-        if fm:
-            result["metadata"] = {
-                "type": fm.get("type"),
-                "importance": fm.get("importance", 3),
-                "created": fm.get("created"),
-                "updated": fm.get("updated"),
-                "title": fm.get("title"),
-                "tags": fm.get("tags", []),
-                "links": fm.get("links", []),
-                "source": fm.get("source"),
-                "status": fm.get("status"),
-            }
-            if fm.get("title"):
-                result["title"] = fm["title"]
-        return {"status": "ok", "result": result}
-
-    async def _search_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        query: str,
-        tags_filter: list[str] | None = None,
-    ) -> dict:
-        """搜索记忆（跳过 >30 天未引用的文件，搜索不算引用）
-
-        使用倒排索引将 O(n*m) 文件遍历 → O(1) 词查找 + O(k) 行读取
-        tags_filter 可选，只返回包含指定标签的记忆
-        """
-        # 构建或更新倒排索引
-        if (self._index_dirty or self._inverted_index is None
-                or self._built_index_version != MemoryTool._INVERTED_INDEX_VERSION):
-            logger.info("[INDEX] search: 重建倒排索引 (old=%d new=%d)",
-                        self._built_index_version, MemoryTool._INVERTED_INDEX_VERSION)
-            self._inverted_index = await self._build_inverted_index(memory_dir)
-            self._built_index_version = MemoryTool._INVERTED_INDEX_VERSION
-            self._index_dirty = False
-
-        # 分词查询
-        query_words = self._tokenize(query)
-        if not query_words:
-            return {"status": "ok", "result": {"message": "没有找到匹配内容", "count": 0, "results": []}}
-
-        # debug: 确认倒排索引中是否有 tags 词
-        for w in query_words:
-            wh = self._inverted_index.get(w, {})
-            if wh:
-                tag_files = [f for f, lns in wh.items() if -1 in lns]
-                if tag_files:
-                    logger.info("[SEARCH_DEBUG] 词 '%s' 命中 tags 索引 → %s", w, tag_files)
-
-        # 取查询词的**并集**（任一匹配即加入）
-        hit_files: dict[str, set[int]] = {}
-        for word in query_words:
-            word_hits = self._inverted_index.get(word, {})
-            if not word_hits:
-                continue
-            for f, lns in word_hits.items():
-                if f not in hit_files:
-                    hit_files[f] = set()
-                hit_files[f] |= set(lns)
-
-        if not hit_files:
-            return {"status": "ok", "result": {"message": "没有找到匹配内容", "count": 0, "results": []}}
-
-        # 过滤 >30 天未引用的文件 + tags_filter 筛选 + 读取匹配行
-        results = []
-        now = datetime.now()
-        index_data = await index.parse()
-
-        for fname, matched_lines in hit_files.items():
-            file_stem = fname.replace(".md", "")
-            last_ref = index_data.get(file_stem, {}).get("last_referenced", "")
-            if last_ref and not self._is_within_days(last_ref, 30, now):
-                continue
-
-            file_path = memory_dir / fname
-            content = file_path.read_text("utf-8")
-
-            # tags_filter 筛选
-            from core.memory.yaml_handler import YamlFrontmatter
-            if tags_filter:
-                fm, _ = YamlFrontmatter.extract_io(content)
-                file_tags = set(fm.get("tags", []))
-                if not file_tags & set(tags_filter):
-                    continue
-
-            # 取正文行（倒排索引的行号基于 body，而非全文）
-            fm, body = YamlFrontmatter.extract_io(content)
-            body_lines = body.split("\n")
-            matched = []
-            has_tag_match = False
-            for ln in sorted(matched_lines):
-                if ln >= 0 and ln < len(body_lines):
-                    matched.append(body_lines[ln].strip())
-                elif ln == -1:
-                    has_tag_match = True
-
-            if matched or has_tag_match:
-                # 读取 frontmatter 获取 title
-                _title = file_stem
-                try:
-                    from core.memory.yaml_handler import YamlFrontmatter
-                    _fm, _ = YamlFrontmatter.extract_io(content)
-                    if _fm.get("title"):
-                        _title = _fm["title"]
-                except Exception:
-                    pass
-
-                # 预览：优先用正文行，纯 tag 匹配则显示 tags 值
-                tag_list = _fm.get("tags", []) or [] if _fm else []
-                if not matched:
-                    preview = f"[tags 匹配] {', '.join(str(t) for t in tag_list)}"
-                else:
-                    preview = matched[0][:80]
-
-                results.append({
-                    "id": file_stem,
-                    "title": _title,
-                    "file": fname,
-                    "match_count": len(matched),
-                    "preview": preview,
-                })
-
-        return {"status": "ok", "result": {"count": len(results), "results": results}}
-
-    async def _list_memories(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        include_all: bool,
-    ) -> dict:
-        """列出所有记忆主题"""
-        index_content = memory_dir / "MEMORY.md"
-        if not index_content.exists():
-            return {"status": "ok", "result": {"index": ""}}
-
-        content = index_content.read_text("utf-8")
-
-        # 诊断：记录 list 返回的内容长度（不打印全量）
-        entry_count = sum(1 for line in content.splitlines() if line.startswith("| ") and "|" in line[2:] and not line.strip().startswith("|---"))
-        logger.info("[MEMORY_DEBUG] list → MEMORY.md 大小=%d 字节, 条目行数=%d",
-            len(content), entry_count)
-
-        entries: list[dict] = []
-        if not include_all:
-            # 过滤过期文件 + 已归档条目
-            index_data = await index.parse()
-            now = datetime.now()
-            filtered_lines: list[str] = []
-            for line in content.splitlines():
-                if line.startswith("| ") and "|" in line[2:]:
-                    parts = [p.strip() for p in line.split("|")]
-                    if len(parts) >= 5 and parts[1]:
-                        _id = parts[1]
-                        # 过滤过期文件
-                        last_ref = index_data.get(_id, {}).get("last_referenced", "")
-                        if last_ref and not self._is_within_days(last_ref, 30, now):
-                            continue
-                        # 过滤已归档条目
-                        if index_data.get(_id, {}).get("status") == "archived":
-                            continue
-                        # 收集结构化条目
-                        entries.append({
-                            "id": _id,
-                            "type": index_data.get(_id, {}).get("section", ""),
-                            "tags": index_data.get(_id, {}).get("tags", ""),
-                            "summary": index_data.get(_id, {}).get("summary", ""),
-                            "updated": index_data.get(_id, {}).get("last_updated", ""),
-                        })
-                filtered_lines.append(line)
-            content = "\n".join(filtered_lines)
-
-        return {"status": "ok", "result": {"index": content, "entries": entries}}
-
-    async def _del_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        title: str,
-    ) -> dict:
-        """删除记忆（软删除 → 移入 _archive/）
-
-        不是物理删除，而是将文件移入 _archive/ 目录，
-        并在 frontmatter 中标记 status: archived 和 archived_at 时间戳。
-        """
-        file_path = memory_dir / f"{title}.md"
-        if not file_path.exists():
-            return {"status": "error", "error": f"记忆文件不存在: {title}.md"}
-
-        # 保护核心文件
-        if title in ("MEMORY", "LINKS"):
-            return {"status": "error", "error": f"核心文件 {title}.md 不允许删除"}
-
-        # 检查是否已在 _archive/
-        archive_dir = memory_dir / "_archive"
-        archive_dir.mkdir(parents=True, exist_ok=True)
-
-        # 检查是否已归档（幂等）
-        for existing in archive_dir.glob(f"{title}_*.md"):
-            return {"status": "error", "error": f"{title}.md 已在 _archive/ 中，请勿重复归档"}
-
-        # 在文件 frontmatter 中标记已归档
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        dest = archive_dir / f"{title}_{timestamp}.md"
-
-        try:
-            content = file_path.read_text("utf-8")
-            from core.memory.yaml_handler import YamlFrontmatter
-            fm, body = YamlFrontmatter.extract_io(content)
-            if fm:
-                fm["status"] = "archived"
-                fm["archived_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                import yaml
-                fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-                archived_content = f"---\n{fm_str}\n---\n\n{body}"
-                file_path.write_text(archived_content, encoding="utf-8")
-        except Exception as e:
-            logger.warning("归档标记 frontmatter 失败: %s", e)
-
-        # 文件写锁保护移动操作
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-        async with lm.acquire(file_path):
-            file_path.rename(dest)
-
-        # 从索引中移除条目（归档文件的 frontmatter 已有 status: archived）
-        await index.remove_entry(title)
-        self.invalidate_cache()
-        logger.info("记忆已归档: %s → _archive/%s_%s.md", title, title, timestamp)
-        return {"status": "ok", "result": f"已归档 {title}.md → _archive/{title}_{timestamp}.md"}
-
-    async def _edit_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        title: str,
-        old_string: str,
-        new_string: str | None,
-        tags: list[str] | None = None,
-        new_importance: int | None = None,
-    ) -> dict:
-        """编辑记忆
-
-        支持通过 tags 更新标签，new_importance 更新重要性
-        """
-        file_path = memory_dir / f"{title}.md"
-        if not file_path.exists():
-            return {"status": "error", "error": f"记忆文件不存在: {title}.md"}
-
-        # 文件写锁保护读-改-写操作
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-        async with lm.acquire(file_path):
-            content = file_path.read_text("utf-8")
-
-            from core.memory.yaml_handler import YamlFrontmatter
-            fm, body = YamlFrontmatter.extract_io(content)
-
-            # ── 只更新元数据（无需 body 修改）──
-            if not old_string and new_string is None:
-                updates = {}
-                if tags is not None:
-                    updates["tags"] = sorted(tags)
-                if new_importance is not None:
-                    updates["importance"] = new_importance
-                if updates:
-                    fm.update(updates)
-                    fm["updated"] = YamlFrontmatter._now_str()
-                    fm["checksum"] = YamlFrontmatter._checksum(body)
-                    import yaml
-                    fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-                    new_content = f"---\n{fm_str}\n---\n\n{body}\n"
-                    file_path.write_text(new_content, encoding="utf-8")
-                    await index.update_modify(title, memory_dir)
-                    self.invalidate_cache()
-                    return {"status": "ok", "result": f"已更新 {title}.md 元数据"}
-                return {"status": "ok", "result": "没有需要更新的元数据"}
-
-            # ── 修改正文 ──
-            if not old_string:
-                return {"status": "error", "error": "edit 操作需要 old_string 参数"}
-
-            if new_string is None:
-                new_string = ""
-
-            occurences = body.count(old_string)
-            if occurences == 0:
-                return {"status": "error", "error": "未找到匹配的原文"}
-            if occurences > 1:
-                return {"status": "error", "error": f"old_string 在文件中出现 {occurences} 次，请提供更精确的匹配文本以确保唯一性"}
-
-            new_body = body.replace(old_string, new_string if new_string else "")
-
-            # 重建文件内容（保留 frontmatter）
-            if fm:
-                updates = {}
-                if tags is not None:
-                    updates["tags"] = sorted(tags)
-                if new_importance is not None:
-                    updates["importance"] = new_importance
-                updates["updated"] = YamlFrontmatter._now_str()
-                updates["checksum"] = YamlFrontmatter._checksum(new_body)
-                fm.update(updates)
-                import yaml
-                fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-                new_content = f"---\n{fm_str}\n---\n\n{new_body}\n"
-            else:
-                new_content = new_body
-
-            file_path.write_text(new_content, encoding="utf-8")
-
-        await index.update_modify(title, memory_dir)
-        self.invalidate_cache()
-        return {"status": "ok", "result": f"已编辑 {title}.md"}
-
-    # ── 按标题查找（frontmatter.title）───────────────
-
-    async def _find_by_title(self, memory_dir: Path, title: str) -> str | None:
-        """搜索所有记忆文件的 frontmatter，返回第一个 title 匹配的文件名（不含 .md）"""
-        if not self._inverted_index or self._index_dirty:
-            self._inverted_index = await self._build_inverted_index(memory_dir)
-            self._index_dirty = False
-        for fname in list(self._inverted_index.get("__all__", {})) if "__all__" in self._inverted_index else os.listdir(memory_dir):
-            if not fname.endswith(".md"):
-                continue
-            try:
-                from core.memory.yaml_handler import YamlFrontmatter
-                fm, _ = YamlFrontmatter.extract(file_path=memory_dir / fname)
-                if fm.get("title") == title:
-                    return fname.replace(".md", "")
-            except Exception:
-                continue
-        return None
-
-    # ── Graph Search (图谱扩散检索) ─────────────────────────
-
-    async def _graph_search(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        seed: str,
-        query_tags: list[str] | None = None,
-        max_depth: int = 2,
-    ) -> dict:
-        """图谱扩散检索调度
-
-        优先走 BFS 图谱扩散（_graph_search_memory），
-        如果 seed 不在图谱中，降级为标签匹配（_tag_search）。
-        """
-        from core.memory.link_graph import LinkGraph
-
-        lg = LinkGraph(memory_dir)
-        await lg.initialize()
-        graph = await lg.parse_links()
-        forward = graph.get("forward", {})
-
-        # 检查 seed 是否在图谱中（精确匹配）
-        if seed in forward or any(seed in targets for targets in forward.values()):
-            results = await self._graph_search_memory(
-                memory_dir, seed, query_tags, max_depth,
-            )
-            method = "graph_search"
-        else:
-            # 模糊匹配：在所有节点名中找包含 seed 的
-            all_nodes: set[str] = set(forward.keys())
-            for targets in forward.values():
-                all_nodes.update(targets)
-            fuzzy_match: str | None = None
-            for node in sorted(all_nodes):
-                if seed in node or node in seed:
-                    fuzzy_match = node
-                    break
-
-            if fuzzy_match:
-                results = await self._graph_search_memory(
-                    memory_dir, fuzzy_match, query_tags, max_depth,
-                )
-                method = "graph_search_fuzzy"
-            else:
-                # 降级：正文搜索（含 tags）
-                sr = await self._search_memory(memory_dir, index, seed)
-                search_results = sr.get("result", {}).get("results", [])
-                results = []
-                for r in search_results:
-                    results.append({
-                        "file": r.get("file", ""),
-                        "depth": 0,
-                        "path": "(内容匹配)",
-                        "relevance": 0.5,
-                        "preview": r.get("preview", "")[:100],
-                        "tags": [],
-                        "type": "",
-                    })
-                method = "content_fallback"
-
-        return {
-            "status": "ok",
-            "result": ({
-                "message": "没有找到匹配内容",
-                "count": 0,
-                "results": [],
-                "method": method,
-            } if not results else {
-                "count": len(results),
-                "results": results,
-                "method": method,
-            }),
-        }
-
-    async def _graph_search_memory(
-        self,
-        memory_dir: Path,
-        seed: str,
-        query_tags: list[str] | None = None,
-        max_depth: int = 2,
-        max_results: int = 10,
-    ) -> list[dict]:
-        """BFS 图谱扩散检索
-
-        从 seed 节点出发，通过 LINKS.md 中的双向链接关系进行扩散，
-        找到关联记忆并按相关性排序。
-
-        信号融合：
-        - A: 图谱扩散 — BFS 遍历，深度越浅权重越高
-        - B: 标签命中 — query_tags 与 frontmatter tags 匹配加分
-        - D: 时间衰减 — 超过 30 天未引用的文件降权但不排除
-        """
-        from core.memory.link_graph import LinkGraph
-        from core.memory.yaml_handler import YamlFrontmatter
-
-        lg = LinkGraph(memory_dir)
-        await lg.initialize()
-        graph = await lg.parse_links()
-
-        forward = graph.get("forward", {})  # source -> {targets}
-
-        # BFS 从 seed 扩散
-        visited: set[str] = {seed}
-        queue: deque[tuple[str, int, list[str]]] = deque([(seed, 0, [seed])])
-        results: list[dict] = []
-        now = datetime.now()
-
-        while queue and len(results) < max_results:
-            node, depth, path = queue.popleft()
-
-            if depth > 0:  # seed 自身不加入结果
-                file_path = memory_dir / f"{node}.md"
-                if file_path.exists():
-                    content = file_path.read_text("utf-8")
-                    fm, body = YamlFrontmatter.extract_io(content)
-
-                    # 信号 A: 图谱扩散 — 深度越浅权重越高
-                    relevance = 1.0 - (depth * 0.2)
-
-                    # 信号 B: 标签命中加分
-                    if query_tags and fm:
-                        file_tags = set(fm.get("tags", []))
-                        matched_tags = file_tags & set(query_tags)
-                        if matched_tags:
-                            relevance += 0.1 * len(matched_tags)
-
-                    # 信号 D: 时间衰减降权（不排除）
-                    if fm:
-                        updated = fm.get("updated", "")
-                        if updated and not self._is_within_days(updated, 30, now):
-                            relevance *= 0.8
-
-                    # 取正文前 100 字作为预览
-                    preview = body.strip()[:100] if body.strip() else "(空)"
-
-                    results.append({
-                        "file": f"{node}.md",
-                        "depth": depth,
-                        "path": " -> ".join(f"[[{p}]]" for p in path),
-                        "relevance": round(relevance, 2),
-                        "preview": preview,
-                        "tags": fm.get("tags", []) if fm else [],
-                        "type": fm.get("type", "") if fm else "",
-                    })
-
-            if depth < max_depth:
-                neighbors = forward.get(node, set())
-                for nb in sorted(neighbors):
-                    if nb not in visited:
-                        visited.add(nb)
-                        queue.append((nb, depth + 1, path + [nb]))
-
-        # 按相关性排序
-        results.sort(key=lambda r: r["relevance"], reverse=True)
-
-        return results[:max_results]
-
-    async def _tag_search(
-        self,
-        memory_dir: Path,
-        query_tags: list[str],
-        max_results: int = 10,
-    ) -> list[dict]:
-        """按标签搜索 — 遍历所有文件匹配 tags
-
-        当 seed 不在图谱中时降级使用（信号 B 兜底）。
-        """
-        from core.memory.yaml_handler import YamlFrontmatter
-
-        results: list[dict] = []
-        for f in sorted(memory_dir.glob("*.md")):
-            if f.name in ("MEMORY.md", "LINKS.md"):
-                continue
-            content = f.read_text("utf-8")
-            fm, _ = YamlFrontmatter.extract_io(content)
-            if fm and query_tags:
-                file_tags = set(fm.get("tags", []))
-                matched = file_tags & set(query_tags)
-                if matched:
-                    body = f.read_text("utf-8")
-                    _, body = YamlFrontmatter.extract_io(body)
-                    results.append({
-                        "file": f.name,
-                        "depth": 0,
-                        "path": "(标签匹配)",
-                        "relevance": 0.5 + 0.1 * len(matched),
-                        "preview": body.strip()[:100] if body.strip() else "(空)",
-                        "tags": fm.get("tags", []),
-                        "type": fm.get("type", ""),
-                    })
-        results.sort(key=lambda r: r["relevance"], reverse=True)
-        return results[:max_results]
-
-    # ── B4: 查重 ───────────────────────────────────────────────
-
-    async def _check_similar_internal(self, memory_dir: Path, content: str) -> dict | None:
-        """系统内部查重（add 时自动调用）
-
-        使用词重叠率（Jaccard 相似度）进行查重，如果与已有文件的重叠率 >= 0.7，返回匹配文件信息。
-
-        Args:
-            memory_dir: 记忆目录
-            content: 要检查的内容（原始内容，不含时间戳和 importance）
-
-        Returns:
-            {"file": str, "similarity": float} 或 None
-        """
-        words = self._tokenize(content)
-        if not words:
-            return None
-
-        # 搜索内容相似度
-        if (self._index_dirty or self._inverted_index is None
-                or self._built_index_version != MemoryTool._INVERTED_INDEX_VERSION):
-            logger.info("[INDEX] similar: 重建倒排索引 (old=%d new=%d)",
-                        self._built_index_version, MemoryTool._INVERTED_INDEX_VERSION)
-            self._inverted_index = await self._build_inverted_index(memory_dir)
-            self._built_index_version = MemoryTool._INVERTED_INDEX_VERSION
-            self._index_dirty = False
-
-        hit_files: dict[str, set[int]] | None = None
-        for word in words:
-            word_hits = self._inverted_index.get(word, {})
-            if not word_hits:
-                continue
-            if hit_files is None:
-                hit_files = {f: set(lns) for f, lns in word_hits.items()}
-            else:
-                hit_files = {f: hit_files[f] & word_hits[f] for f in hit_files if f in word_hits}
-
-        if hit_files:
-            best_file = max(hit_files, key=lambda f: len(hit_files[f]))
-            overlap = len(hit_files[best_file])
-            total_words = len(words)
-            similarity = overlap / max(total_words, 1)
-            if similarity >= 0.7:
-                return {"file": best_file, "similarity": similarity}
-
-        return None
-
-    async def _append_to_existing(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        filename: str,
-        new_string: str,
-        tags: list[str] | None = None,
-    ) -> dict:
-        """向已存在的记忆文件追加条目（查重命中后使用）"""
-        file_path = memory_dir / filename
-        now = datetime.now()
-
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-        async with lm.acquire(file_path):
-            # 合并 tags 到 frontmatter
-            _tags = tags or []
-            if _tags:
-                from core.memory.yaml_handler import YamlFrontmatter
-                fm, _ = YamlFrontmatter.extract(file_path)
-                existing_tags = set(fm.get("tags", []))
-                new_unique = [t for t in _tags if t not in existing_tags]
-                if new_unique:
-                    YamlFrontmatter.update(file_path, {
-                        "tags": sorted(existing_tags | set(_tags))
-                    })
-            with open(file_path, "a", encoding="utf-8") as f:
-                f.write(new_string)
-            # 更新 frontmatter 的 checksum 和 updated
-            from core.memory.yaml_handler import YamlFrontmatter
-            YamlFrontmatter.update(file_path, {})
-
-        title = filename.replace(".md", "")
-        await index.update_after_add(
-            title,
-            {
-                "entries": self._count_entries(file_path),
-                "last_updated": now.strftime("%Y-%m-%d"),
-                "last_referenced": now.strftime("%Y-%m-%d"),
-                "tags": tags or [],
-                "summary": new_string.strip()[:30],
-                "section": "其他",
-            },
-        )
-
-        self.invalidate_cache()
-
-        from core.memory.yaml_handler import YamlFrontmatter as YF
-        fp = memory_dir / f"{title}.md"
-        cur_imp = 3
-        if fp.exists():
-            fm2, _ = YF.extract(fp)
-            cur_imp = fm2.get("importance", 3)
-        return {"status": "ok", "result": {"file": filename, "added": new_string.strip()},
-                "note": f"记忆重要度未变更，当前记忆重要度：{cur_imp}"}
-
-    # ── Brain Tools ───────────────────────────────────────────
-
-    async def _link_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        src: str,
-        tgt: str,
-    ) -> dict:
-        """建立两个记忆文件之间的双向链接
-
-        在 src 和 tgt 文件的 YAML frontmatter 的 links 字段中互相添加对方，
-        并更新 LINKS.md 图谱。
-        """
-        src_path = memory_dir / f"{src}.md"
-        tgt_path = memory_dir / f"{tgt}.md"
-
-        if not src_path.exists():
-            return {"status": "error", "error": f"源文件不存在: {src}.md"}
-        if not tgt_path.exists():
-            return {"status": "error", "error": f"目标文件不存在: {tgt}.md"}
-
-        from core.memory.link_graph import LinkGraph
-        from core.memory.yaml_handler import YamlFrontmatter
-
-        lg = LinkGraph(memory_dir)
-
-        # 在 src 的 frontmatter links 中添加 tgt
-        src_fm, _ = YamlFrontmatter.extract(src_path)
-        existing_src_links = src_fm.get("links", [])
-        if not isinstance(existing_src_links, list):
-            existing_src_links = []
-        tgt_link = f"[[{tgt}]]"
-        if tgt_link not in existing_src_links:
-            existing_src_links.append(tgt_link)
-            YamlFrontmatter.update(src_path, {"links": existing_src_links})
-
-        # 在 tgt 的 frontmatter links 中添加 src
-        tgt_fm, _ = YamlFrontmatter.extract(tgt_path)
-        existing_tgt_links = tgt_fm.get("links", [])
-        if not isinstance(existing_tgt_links, list):
-            existing_tgt_links = []
-        src_link = f"[[{src}]]"
-        if src_link not in existing_tgt_links:
-            existing_tgt_links.append(src_link)
-            YamlFrontmatter.update(tgt_path, {"links": existing_tgt_links})
-
-        # 更新 LINKS.md 图谱
-        await lg.update_links(src_path)
-        await lg.update_links(tgt_path)
-
-        logger.info("已建立双向链接: %s ↔ %s", src, tgt)
-        return {"status": "ok", "result": f"已建立链接: {src} ↔ {tgt}"}
-
-    async def _audit_memory(
-        self,
-        memory_dir: Path,
-    ) -> dict:
-        """扫描审计记忆库
-
-        执行三项扫描：
-        1. 断链检测 — LINKS.md 记录的链接目标文件已不存在
-        2. 孤立文件检测 — 无入链无出链的文件
-        3. 总文件数统计
-        """
-        from core.memory.link_graph import LinkGraph
-        lg = LinkGraph(memory_dir)
-        await lg.initialize()
-
-        dead_links = await lg.detect_dead_links()
-        orphans = await lg.find_orphans()
-
-        total_files = len([
-            f for f in memory_dir.glob("*.md")
-            if f.name not in ("MEMORY.md", "LINKS.md")
-        ])
-
-        # 简单的文件对相似度检测
-        similar_pairs = await self._check_similar_pairs(memory_dir)
-
-        return {
-            "status": "ok",
-            "result": {
-                "dead_links": dead_links,
-                "orphans": orphans,
-                "similar_pairs": similar_pairs,
-                "total_files": total_files,
-            },
-        }
-
-    async def _merge_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-        sources: list[str],
-        target: str,
-    ) -> dict:
-        """合并多个记忆文件到一个目标文件
-
-        1. 读取所有源文件内容
-        2. 合并 frontmatter（created 取最早的，updated 为当前时间，tags 取并集，生成新 id）
-        3. 合并正文内容到 target
-        4. 源文件移入 _archive/
-        """
-        if not sources:
-            return {"status": "error", "error": "sources 不能为空"}
-
-        from core.memory.yaml_handler import YamlFrontmatter
-        from core.memory.link_graph import LinkGraph
-
-        # 验证所有源文件都存在
-        source_paths = []
-        for src in sources:
-            sp = memory_dir / f"{src}.md"
-            if not sp.exists():
-                return {"status": "error", "error": f"源文件不存在: {src}.md"}
-            source_paths.append(sp)
-
-        # 读取所有源文件的内容
-        merged_bodies: list[str] = []
-        earliest_created: str | None = None
-        merged_tags: set[str] = set()
-        merged_type: str = "fact"
-        merged_importance: int = 3
-
-        for sp in source_paths:
-            content = sp.read_text("utf-8")
-            fm, body = YamlFrontmatter.extract_io(content)
-            merged_bodies.append(body.strip())
-
-            # 取最早的 created
-            created = fm.get("created", "")
-            if created and (earliest_created is None or created < earliest_created):
-                earliest_created = created
-
-            # tags 取并集
-            tags = fm.get("tags", [])
-            if isinstance(tags, list):
-                for t in tags:
-                    if isinstance(t, str):
-                        merged_tags.add(t)
-
-            # type 取第一个非空的
-            if not merged_type or merged_type == "fact":
-                merged_type = fm.get("type", "fact")
-
-            # importance 取最大值
-            imp = int(fm.get("importance", 3))
-            if imp > merged_importance:
-                merged_importance = imp
-
-        merged_body_text = "\n\n---\n\n".join(merged_bodies)
-
-        # 写入/创建 target 文件
-        target_path = memory_dir / f"{target}.md"
-
-        if target_path.exists():
-            # 目标已存在 → 追加内容并更新 frontmatter
-            existing_content = target_path.read_text("utf-8")
-            tgt_fm, tgt_body = YamlFrontmatter.extract_io(existing_content)
-            new_body = tgt_body.strip() + "\n\n---\n\n" + merged_body_text
-            tgt_fm["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            tgt_fm["checksum"] = YamlFrontmatter._checksum(new_body)
-            # tags 取并集
-            existing_tags = set()
-            existing_tags_list = tgt_fm.get("tags", [])
-            if isinstance(existing_tags_list, list):
-                for t in existing_tags_list:
-                    if isinstance(t, str):
-                        existing_tags.add(t)
-            all_tags = sorted(existing_tags | merged_tags)
-            tgt_fm["tags"] = all_tags
-            import yaml
-            fm_str = yaml.dump(tgt_fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-            target_path.write_text(f"---\n{fm_str}\n---\n\n{new_body}\n", encoding="utf-8")
-        else:
-            # 目标不存在 → 创建新文件
-            fm_metadata = {
-                "type": merged_type,
-                "source": "agent",
-                "tags": sorted(merged_tags),
-                "links": [],
-                "importance": merged_importance,
-            }
-            full_content = YamlFrontmatter.inject(merged_body_text, fm_metadata)
-            # 覆盖 created 为最早的
-            full_fm, _ = YamlFrontmatter.extract_io(full_content)
-            if earliest_created and full_fm:
-                full_fm["created"] = earliest_created
-                import yaml
-                fm_str = yaml.dump(full_fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-                full_content = f"---\n{fm_str}\n---\n\n{merged_body_text}\n"
-            target_path.write_text(full_content, encoding="utf-8")
-
-        # 源文件移入 _archive/
-        archive_dir = memory_dir / "_archive"
-        archive_dir.mkdir(parents=True, exist_ok=True)
-        lg = LinkGraph(memory_dir)
-        archived_sources = []
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-
-        for sp in source_paths:
-            stem = sp.stem
-            # 更新 LINKS.md 前先读取，完成后归档
-            await lg.update_links(sp)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dest = archive_dir / f"{stem}_{timestamp}.md"
-            async with lm.acquire(sp):
-                sp.rename(dest)
-            await index.remove_entry(stem)
-            archived_sources.append(f"{stem}.md")
-
-        # 更新目标文件的 LINKS.md
-        await lg.update_links(target_path)
-
-        # 更新索引中的 target
-        now = datetime.now()
-        await index.update_after_add(
-            target,
-            {
-                "entries": self._count_entries(target_path),
-                "last_updated": now.strftime("%Y-%m-%d"),
-                "last_referenced": now.strftime("%Y-%m-%d"),
-                "summary": merged_body_text[:30],
-                "section": "其他",
-            },
-        )
-
-        self.invalidate_cache()
-        logger.info("已合并 %d 个文件 → %s.md, 已归档: %s",
-                     len(sources), target, archived_sources)
-        return {
-            "status": "ok",
-            "result": {
-                "target": f"{target}.md",
-                "archived_sources": archived_sources,
-                "merged_count": len(sources),
-            },
-        }
-
-    async def _prune_memory(
-        self,
-        memory_dir: Path,
-        index: MemoryIndex,
-    ) -> dict:
-        """清理孤立/过期文件，移入 _archive/
-
-        将孤立文件（无入链无出链）移入 _archive/，排除 MEMORY.md 和 LINKS.md。
-        """
-        from core.memory.link_graph import LinkGraph
-        lg = LinkGraph(memory_dir)
-        await lg.initialize()
-
-        orphans = await lg.find_orphans()
-        archive_dir = memory_dir / "_archive"
-        archive_dir.mkdir(parents=True, exist_ok=True)
-
-        pruned: list[str] = []
-        from core.tools.file_lock import LockManager
-        lm = await LockManager.get_instance()
-
-        for fname in orphans:
-            src_path = memory_dir / fname
-            if not src_path.exists():
-                continue
-            stem = src_path.stem
-            # 保护核心文件
-            if stem in ("MEMORY", "LINKS"):
-                continue
-            # 检查是否已归档
-            already_archived = False
-            for existing in archive_dir.glob(f"{stem}_*.md"):
-                already_archived = True
-                break
-            if already_archived:
-                continue
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            dest = archive_dir / f"{stem}_{timestamp}.md"
-
-            # 归档标记 frontmatter
-            try:
-                content = src_path.read_text("utf-8")
-                from core.memory.yaml_handler import YamlFrontmatter
-                fm, body = YamlFrontmatter.extract_io(content)
-                if fm:
-                    fm["status"] = "archived"
-                    fm["archived_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    import yaml
-                    fm_str = yaml.dump(fm, default_flow_style=False, allow_unicode=True, sort_keys=False).strip()
-                    archived_content = f"---\n{fm_str}\n---\n\n{body}"
-                    src_path.write_text(archived_content, encoding="utf-8")
-            except Exception as e:
-                logger.warning("prune 标记 frontmatter 失败 %s: %s", fname, e)
-
-            async with lm.acquire(src_path):
-                src_path.rename(dest)
-            await index.remove_entry(stem)
-            pruned.append(fname)
-            logger.info("prune 已归档: %s", fname)
-
-        self.invalidate_cache()
-        return {"status": "ok", "result": {"pruned": pruned}}
-
-    async def _check_similar_pairs(self, memory_dir: Path) -> list[dict]:
-        """扫描所有文件对，检测高词重叠率文件（辅助 audit 使用）
-
-        对每对文件计算 Jaccard 词重叠率，返回 >= 0.5 的重叠对。
-        """
-        files = list(memory_dir.glob("*.md"))
-        files = [f for f in files if f.name not in ("MEMORY.md", "LINKS.md")]
-        if len(files) < 2:
-            return []
-
-        # 预读取所有文件内容
-        file_contents: dict[str, tuple[set[str], str]] = {}
-        for f in files:
-            try:
-                from core.memory.yaml_handler import YamlFrontmatter
-                content = f.read_text("utf-8")
-                _, body = YamlFrontmatter.extract_io(content)
-                words = self._tokenize(body)
-                file_contents[f.stem] = (words, body[:60])
-            except Exception:
-                continue
-
-        results: list[dict] = []
-        names = list(file_contents.keys())
-        for i in range(len(names)):
-            for j in range(i + 1, len(names)):
-                a_words, a_preview = file_contents[names[i]]
-                b_words, b_preview = file_contents[names[j]]
-                if not a_words or not b_words:
-                    continue
-                overlap = len(a_words & b_words)
-                similarity = overlap / max(len(a_words | b_words), 1)
-                if similarity >= 0.5:
-                    results.append({
-                        "file_a": f"{names[i]}.md",
-                        "file_b": f"{names[j]}.md",
-                        "similarity": round(similarity, 3),
-                        "preview_a": a_preview,
-                        "preview_b": b_preview,
-                    })
-
-        results.sort(key=lambda x: x["similarity"], reverse=True)
-        return results[:10]  # 最多返回 Top-10
-
-    @staticmethod
-    def _count_entries(file_path: Path) -> str:
-        """统计文件中的条目数"""
-        try:
-            count = sum(1 for line in file_path.read_text("utf-8").splitlines() if line.startswith("- ["))
-            return str(count)
-        except Exception:
-            return "0"
-
-    @staticmethod
-    def _is_within_days(date_str: str, days: int, now: datetime) -> bool:
-        """检查日期是否在指定天数内"""
-        try:
-            d = datetime.strptime(date_str[:10], "%Y-%m-%d") if date_str else now
-            return (now - d).days <= days
-        except (ValueError, IndexError):
-            return True
-
-    @staticmethod
-    def _tokenize(text: str) -> set[str]:
-        """中文分词：使用 jieba 提取有意义的词汇
-        
-        英文单词保持原有逻辑（提取 >=2 字符的单词），
-        中文部分改用 jieba 分词，避免产生无意义双字。
-        """
-        words: set[str] = set()
-        # 英文词
-        for m in re.finditer(r'[a-zA-Z_]\w{1,}', text):
-            words.add(m.group().lower())
-        # 中文部分使用 jieba 分词
-        chinese_text = re.sub(r'[^\u4e00-\u9fff]', '', text)
-        if chinese_text:
-            for word in jieba.lcut(chinese_text):
-                w = word.strip()
-                if len(w) >= 2:
-                    words.add(w)
-        return words
-
-    async def _build_inverted_index(self, memory_dir: Path) -> dict:
-        """构建 {word: {filename: {line_indices}}} 倒排索引
-
-        去掉 YAML frontmatter 后索引所有行（包括 markdown 格式内容），逐文件加读锁
-        """
-        from core.tools.file_lock import LockManager
-        from core.memory.yaml_handler import YamlFrontmatter
-
-        lm = await LockManager.get_instance()
-        index: dict[str, dict[str, set[int]]] = {}
-        for f in sorted(memory_dir.glob("*.md")):
-            if f.name == "MEMORY.md":
-                continue
-            async with lm.acquire_read(f):
-                content = f.read_text("utf-8")
-            # 去掉 YAML frontmatter，只索引正文
-            fm, body = YamlFrontmatter.extract_io(content)
-            if not body:
-                continue
-
-            # 把 tags 也加入索引（用虚拟行号 -1 标记，只在搜索匹配时生效）
-            raw_tags = fm.get("tags", []) or [] if fm else []
-            tag_words: set[str] = set()
-            for t in raw_tags:
-                if isinstance(t, str):
-                    for w in self._tokenize(t):
-                        tag_words.add(w)
-            for tag_word in tag_words:
-                if tag_word not in index:
-                    index[tag_word] = {}
-                if f.name not in index[tag_word]:
-                    index[tag_word][f.name] = set()
-                index[tag_word][f.name].add(-1)
-            for ln, line in enumerate(body.split("\n")):
-                if not line.strip():
-                    continue
-                words = self._tokenize(line)
-                for word in words:
-                    if word not in index:
-                        index[word] = {}
-                    if f.name not in index[word]:
-                        index[word][f.name] = set()
-                    index[word][f.name].add(ln)
-        return index

@@ -50,12 +50,16 @@ def _resolve_python_to_venv(command: str) -> str:
         return command  # 找不到 venv，原样返回
 
     # 替换命令开头的 python/python3/pip/pip3
-    parts = command.split()
+    # 使用 shlex.split(posix=False) 正确处理 Windows 路径中的引号和反斜杠
+    try:
+        parts = shlex.split(command, posix=False)
+    except ValueError:
+        return command  # 无法分词时原样返回
     if parts and parts[0] in ("python", "python3", "pip", "pip3"):
         parts[0] = venv_python if parts[0].startswith("python") else str(
             (PROJECT_VENV if PROJECT_VENV.exists() else _PROJECT_VENV_ALT) / "Scripts" / f"{parts[0]}.exe"
         )
-        return " ".join(parts)
+        return shlex.join(parts)
 
     # 也处理形如 "cd xxx && python" 或 "cd xxx ; python" 的场景
     for sep in ("&&", ";"):
@@ -64,14 +68,17 @@ def _resolve_python_to_venv(command: str) -> str:
         new_segments = []
         for seg in segments:
             seg = seg.strip()
-            seg_parts = seg.split()
+            try:
+                seg_parts = shlex.split(seg, posix=False)
+            except ValueError:
+                seg_parts = seg.split()  # fallback: 无法用 shlex 时用简单分词
             if seg_parts and seg_parts[0] in ("python", "python3", "pip", "pip3"):
                 if seg_parts[0].startswith("python"):
                     seg_parts[0] = venv_python
                 else:
                     venv_dir = PROJECT_VENV if PROJECT_VENV.exists() else _PROJECT_VENV_ALT
                     seg_parts[0] = str(venv_dir / "Scripts" / f"{seg_parts[0]}.exe")
-                seg = " ".join(seg_parts)
+                seg = shlex.join(seg_parts)
                 changed = True
             new_segments.append(seg)
         if changed:
@@ -173,7 +180,11 @@ def _extract_write_targets(command: str) -> list[str]:
 def _is_inline_script(command: str) -> bool:
     """检测是否为脚本解释器 + -c/-e 内联代码执行"""
     script_flags = {'-c', '-e', '--eval', '-Command'}
-    parts = command.split()
+    try:
+        parts = shlex.split(command, posix=False)
+    except ValueError:
+        # 语法错误（如未闭合引号），无法判断，安全起见视为 inline
+        parts = command.split()
     for i, part in enumerate(parts):
         if part in script_flags and i + 1 < len(parts):
             # 后面有代码参数

@@ -4,6 +4,9 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+# 绝对硬限制：任何计划都不能超过此子任务数
+MAX_SUBTASKS_HARD_LIMIT = 100
+
 
 class SubTaskStatus(str, Enum):
     """子任务状态"""

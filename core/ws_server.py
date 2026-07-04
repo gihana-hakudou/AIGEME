@@ -23,23 +23,13 @@ from core.tools.skill_tools import SkillManager
 
 logger = logging.getLogger(__name__)
 
-
-# === 诊断：写文件日志（绕过 uvicorn reload 输出问题） ===
-_DIAG_LOG = Path(__file__).resolve().parent.parent / "diag_ws.log"
-_DIAG_MAX_BYTES = 10 * 1024 * 1024  # 10MB
+# === 诊断日志 ===
+from core.engine.diag_logger import diag as _base_diag
 
 
 def _diag(msg: str) -> None:
-    """写诊断日志到文件（超过10MB自动轮转）"""
-    try:
-        log_path = _DIAG_LOG
-        if log_path.exists() and log_path.stat().st_size > _DIAG_MAX_BYTES:
-            log_path.rename(log_path.with_suffix(".log.1"))
-        with open(log_path, "a", encoding="utf-8") as f:
-            f.write(f"[{__import__('datetime').datetime.now()}] {msg}\n")
-            f.flush()
-    except Exception:
-        pass
+    """写诊断日志（来源标记为 ws_server）"""
+    _base_diag(msg, source="ws_server")
 
 
 @dataclass
@@ -152,7 +142,7 @@ class WSServer:
             if "/" in model:
                 _p = model.split("/", 1)[0].strip().lower()
                 try:
-                    from core.main import PROVIDER_DEFAULTS
+                    from core.utils import PROVIDER_DEFAULTS
                     defaults = PROVIDER_DEFAULTS.get(_p, {})
                     if defaults.get("native", False) is True:
                         native_provider = True

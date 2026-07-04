@@ -4,6 +4,7 @@
 安全策略（SEC-01 ~ SEC-08）在 core/mcp_server/manager.py 中实现。
 """
 
+import asyncio
 import logging
 from typing import Any, Callable
 
@@ -26,6 +27,8 @@ def _get_manager() -> McpServerManager:
 # ── MCP 工具刷新回调 ──────────────────────────────────
 # 由 create_app() 在启动时注入，供配置变更后重新连接 + 注册工具
 _refresh_callback: Callable[[], Any] | None = None
+# 持有 _trigger_refresh 创建的 Task 引用，防止 GC 回收
+_refresh_task: asyncio.Task | None = None
 
 
 def set_refresh_callback(callback: Callable[[], Any]) -> None:
@@ -38,12 +41,23 @@ def set_refresh_callback(callback: Callable[[], Any]) -> None:
     _refresh_callback = callback
 
 
+def _log_task_exception(task: asyncio.Task) -> None:
+    """记录异步任务中未被捕获的异常"""
+    try:
+        exc = task.exception()
+        if exc:
+            logger.warning("[MCP] 刷新后台任务异常: %s", exc)
+    except asyncio.CancelledError:
+        pass  # 任务取消是正常的
+
+
 def _trigger_refresh() -> None:
     """触发 MCP 工具刷新（在配置变更后异步调用）"""
+    global _refresh_task
     if _refresh_callback is not None:
         try:
-            import asyncio
-            asyncio.ensure_future(_refresh_callback())
+            _refresh_task = asyncio.create_task(_refresh_callback())
+            _refresh_task.add_done_callback(_log_task_exception)
             logger.info("[MCP] 已触发工具刷新（异步）")
         except Exception as e:
             logger.error("[MCP] 触发工具刷新失败: %s", e)

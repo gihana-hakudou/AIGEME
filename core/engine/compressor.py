@@ -4,11 +4,12 @@
 1. 从 config 读取 context_window + token_limit_ratio 作为触发阈值
 2. 不再有 PROTECT_COUNT / PROTECT_TURNS 常量
 3. 触发后调用 trim_tools() 保持最近 10 轮完整
-4. 精确 token 估算：优先调用 LLM 后端的 /tokenize 接口，不可用时回退到启发式
+4. 精确 token 估算：优先调用 LLM 后端的 /tokenize 接口，不可用时回退到 DeepSeek 离线 tokenizer，再回退到 tiktoken 和启发式
 """
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.request import Request, urlopen
 
@@ -23,12 +24,17 @@ DEFAULT_TOKEN_LIMIT_RATIO = 0.9
 DEFAULT_KEEP_TOOL_TURNS = 5
 DEFAULT_TRUNCATE_TOOL_CONTENT_LENGTH = 500  # 旧轮次工具返回内容截断长度
 
+# DeepSeek 离线 tokenizer 路径（相对于当前文件）
+_tokenizer_dir = Path(__file__).resolve().parent / "deepseek_tokenizer"
+DEEPSEEK_TOKENIZER_PATH = str(_tokenizer_dir / "tokenizer.json")
+
 # 缓存 tokenize 接口的可用性，避免每次调用都尝试
 _tokenize_available: bool | None = None
 _tokenize_api_base: str | None = None
 _tiktoken_available: bool | None = None
 _tiktoken_model: str | None = None
 _tiktoken_enc: Any = None
+_deepseek_tokenizer: Any = None  # Lazy-loaded DeepSeek 离线 tokenizer 实例
 
 
 async def _try_tokenize(text: str) -> int | None:
@@ -149,6 +155,48 @@ def _try_tiktoken(text: str) -> int | None:
         return None
 
 
+def _try_deepseek_tokenizer(text: str) -> int | None:
+    """使用 DeepSeek 官方离线 tokenizer 精确计算 token 数。
+
+    纯本地计算，无网络依赖。通过 tockenizers 库直接加载 tokenizer.json，
+    适用于 DeepSeek 系列模型的精确 token 计数。
+    首次调用时惰性加载（约 350ms），之后复用缓存实例。
+    返回 token 数，tokenizer 不可用时返回 None。
+    """
+    global _deepseek_tokenizer
+
+    # 已加载成功，直接编码
+    if _deepseek_tokenizer is not None:
+        try:
+            return len(_deepseek_tokenizer.encode(text).ids)
+        except Exception as e:
+            logger.debug("DeepSeek tokenizer 编码失败: %s", e)
+            return None
+
+    # 首次调用：惰性加载 tokenizer
+    try:
+        from tokenizers import Tokenizer
+        import time
+        t0 = time.time()
+        _deepseek_tokenizer = Tokenizer.from_file(DEEPSEEK_TOKENIZER_PATH)
+        elapsed = (time.time() - t0) * 1000
+        count = len(_deepseek_tokenizer.encode(text).ids)
+        logger.info("DeepSeek 离线 tokenizer 加载成功 (%.0fms)，%d tokens", elapsed, count)
+        return count
+    except ImportError:
+        logger.warning("tokenizers 库未安装，跳过 DeepSeek 离线 tokenizer")
+        _deepseek_tokenizer = object()  # 哨兵值，避免每次重试
+        return None
+    except FileNotFoundError:
+        logger.warning("DeepSeek tokenizer 文件未找到: %s", DEEPSEEK_TOKENIZER_PATH)
+        _deepseek_tokenizer = object()  # 哨兵值，避免每次重试
+        return None
+    except Exception as e:
+        logger.debug("DeepSeek tokenizer 加载失败: %s，降级到下一个策略", e)
+        _deepseek_tokenizer = None  # 可恢复错误（如权限短暂问题），允许下次重试
+        return None
+
+
 def _format_messages_for_tokenize(messages: list[Any]) -> str:
     """将 BaseMessage 列表格式化为近似 LLM API 调用格式的纯文本。
 
@@ -190,8 +238,9 @@ async def estimate_tokens_async(messages: list[Any]) -> int:
     
     策略（优先级从高到低）：
     1. llama.cpp /tokenize 接口（最精确，适用于本地推理）
-    2. tiktoken 模型编码（适用于 OpenAI / DeepSeek 等 API）
-    3. 启发式 chars/2（通用回退）
+    2. DeepSeek 离线 tokenizer（纯本地，适用于 DeepSeek 模型）
+    3. tiktoken 模型编码（适用于 OpenAI / 等 API）
+    4. 启发式 chars/2（通用回退）
     """
     text = _format_messages_for_tokenize(messages)
 
@@ -200,12 +249,17 @@ async def estimate_tokens_async(messages: list[Any]) -> int:
     if precise is not None:
         return precise
 
-    # 策略 2: tiktoken（OpenAI / DeepSeek / 等）
+    # 策略 2: DeepSeek 离线 tokenizer（纯本地，无网络依赖）
+    deepseek_count = _try_deepseek_tokenizer(text)
+    if deepseek_count is not None:
+        return deepseek_count
+
+    # 策略 3: tiktoken（OpenAI / 等）
     tiktok = _try_tiktoken(text)
     if tiktok is not None:
         return tiktok
 
-    # 策略 3: 启发式回退
+    # 策略 4: 启发式回退
     return estimate_tokens(messages)
 
 

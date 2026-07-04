@@ -18,10 +18,12 @@ from core.raact_loop.stream_router import route_response
 from core.tools.registry import ToolRegistry
 from core.tools.parallel import ParallelExecutor, ToolCallDef
 from core.memory.memory_tracker import MemoryContextTracker
+from core.config.settings import get_config
 
 logger = logging.getLogger(__name__)
 
-MAX_RAACT_ROUNDS = 8
+_config = get_config()
+MAX_RAACT_ROUNDS = _config.get("raact", {}).get("max_rounds", 8)
 MAX_MULTIMODAL_RETRIES = 1  # 多模态降级重试次数
 MAX_TOOL_CHOICE_RETRIES = 1  # tool_choice 降级重试次数
 
@@ -116,8 +118,8 @@ def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
 
         # 2a. result 为 None → 工具把数据放在顶层（如 servers/count），直接序列化
         if inner_result is None:
-            # 去掉 status 和 output_type，序列化剩余内容
-            content_dict = {k: v for k, v in inner.items() if k not in ("status", "output_type")}
+            # 去掉 status 和 output_type 以及值为 None 的字段，序列化剩余内容
+            content_dict = {k: v for k, v in inner.items() if k not in ("status", "output_type") and v is not None}
             if content_dict:
                 try:
                     return json.dumps(content_dict, ensure_ascii=False)
