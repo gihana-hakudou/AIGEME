@@ -56,9 +56,9 @@ async def _ocr_fallback_for_messages(messages: list[dict]) -> bool:
             file_path = block.get("_file_path", "")
             img_id = block.get("_img_id", "")
 
-            # 尝试 OCR 提取文字
-            ocr_text = None
-            if file_path:
+            # 优先使用初始注入时缓存的 OCR 结果，避免重复推理
+            ocr_text = block.get("_ocr_text", None)
+            if not ocr_text and file_path:
                 ocr_text = await ocr_image(file_path)
 
             if ocr_text:
@@ -515,6 +515,9 @@ class RaActLoop:
                 ocr_text = None
                 if file_path:
                     ocr_text = await ocr_image(file_path)
+                    # 缓存 OCR 结果到图片 dict，避免降级时重复推理
+                    if ocr_text:
+                        img["_ocr_text"] = ocr_text
                 # 构建文本块：文件路径 + OCR 结果
                 img_text = f"图片（{img_id}）：{file_path}"
                 if ocr_text:
@@ -614,9 +617,11 @@ class RaActLoop:
                         for img in images:
                             fp = img.get("_file_path", "")
                             iid = img.get("_img_id", "")
-                            ot = None
-                            if fp:
+                            ot = img.get("_ocr_text", None)
+                            if not ot and fp:
                                 ot = await ocr_image(fp)
+                                if ot:
+                                    img["_ocr_text"] = ot
                             img_text = f"图片（{iid}）：{fp}"
                             if ot:
                                 img_text += f"\n图片文字内容：{ot}"
