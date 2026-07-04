@@ -12,6 +12,12 @@ echo    AIGEME Environment Setup
 echo ============================
 echo.
 
+:: -- Check if existing venv is usable --
+if exist "!PYTHON!" (
+    echo [INFO] venv already exists at !VENV_DIR!, skipping Python check.
+    goto :install_deps
+)
+
 :: -- Check Python --
 where python >nul 2>&1
 if %errorlevel% neq 0 (
@@ -44,18 +50,16 @@ if %errorlevel% neq 0 (
 )
 
 :: -- Create venv --
-if exist "!PYTHON!" (
-    echo [INFO] venv already exists, skipping.
-) else (
-    echo [INFO] Creating Python virtual environment...
-    python -m venv "!VENV_DIR!"
-    if !errorlevel! neq 0 (
-        echo [ERROR] Failed to create venv.
-        pause
-        exit /b 1
-    )
-    echo [OK] venv created.
+echo [INFO] Creating Python virtual environment...
+python -m venv "!VENV_DIR!"
+if !errorlevel! neq 0 (
+    echo [ERROR] Failed to create venv.
+    pause
+    exit /b 1
 )
+echo [OK] venv created.
+
+:install_deps
 
 :: -- Install dependencies --
 echo [INFO] Installing project dependencies...
