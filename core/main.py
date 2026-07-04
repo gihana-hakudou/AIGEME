@@ -146,7 +146,6 @@ def create_app() -> FastAPI:
     llm_cfg = cfg.get("llm", {})
     llm_mode = llm_cfg.get("mode", "remote")
     is_local = llm_mode == "local"
-    is_multimodal = llm_cfg.get("multimodal", False)
 
     # 权限检查已全部移至 bash_tools.py 的 _check_command_risk（写路径保护 + 权限模式）
     # 旧的 PermissionChain / BlocklistFilter / PathScopeFilter / ZonePermissionFilter 已移除
@@ -155,7 +154,6 @@ def create_app() -> FastAPI:
     ws_server = WSServer(
         project_root=PROJECT_ROOT,
         registry=registry,
-        multimodal=is_multimodal,
     )
     app.state.ws_server = ws_server
 

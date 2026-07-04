@@ -70,11 +70,9 @@ class WSServer:
         self,
         project_root: Path,
         registry: ToolRegistry,
-        multimodal: bool = True,
     ) -> None:
         self._project_root = project_root
         self._registry = registry
-        self._multimodal = multimodal
         self._sessions: dict[str, Session] = {}
         self._instructor: InstructorClient | None = None
         # 确认令牌存储：token → {session_id, created_at}
@@ -529,9 +527,9 @@ class WSServer:
                 # === DEBUG: 确认消息到达 ===
                 logger.debug("收到消息: %s", msg.content[:50])
 
-                # 处理图片（多模态）：缩放至 1024px、转 JPEG/re-base64（在后台线程执行，不阻塞消息循环）
+                # 处理图片：缩放至 1024px、转 JPEG/re-base64，存盘供 OCR 降级
                 image_contents: list[dict] = []
-                if self._multimodal and msg.images:
+                if msg.images:
                     image_contents = await asyncio.get_event_loop().run_in_executor(
                         None, self._process_images, msg.images
                     )
