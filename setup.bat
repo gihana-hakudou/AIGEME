@@ -59,6 +59,29 @@ if !errorlevel! neq 0 (
 )
 echo [OK] venv created.
 
+:: -- Check/Install Git Bash (for native bash execution on Windows) --
+where bash >nul 2>&1
+if !errorlevel! neq 0 (
+    echo [INFO] Git Bash not found. Attempting automatic install via winget...
+    echo       (Required for native bash command execution instead of PowerShell)
+    where winget >nul 2>&1
+    if !errorlevel! equ 0 (
+        winget install Git.Git --silent --accept-package-agreements
+        if !errorlevel! equ 0 (
+            echo [OK] Git for Windows installed. Please close and re-run setup to use bash.
+        ) else (
+            echo [WARN] Git automatic install failed.
+            echo [WARN] See https://git-scm.com/downloads/win for manual install.
+        )
+    ) else (
+        echo [WARN] winget not available. Install Git Bash manually:
+        echo [WARN]   https://git-scm.com/downloads/win
+    )
+) else (
+    echo [OK] Git Bash found at: 
+    where bash
+)
+
 :install_deps
 
 :: -- Install dependencies --

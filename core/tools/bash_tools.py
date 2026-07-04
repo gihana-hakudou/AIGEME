@@ -87,6 +87,33 @@ def _resolve_python_to_venv(command: str) -> str:
     return command
 
 
+def _find_git_bash() -> str | None:
+    """查找系统安装的 Git Bash 路径，返回 bash.exe 完整路径或 None"""
+    # 常见安装位置
+    candidates = [
+        r"C:\Program Files\Git\bin\bash.exe",
+        r"C:\Program Files\Git\usr\bin\bash.exe",
+        r"C:\Program Files (x86)\Git\bin\bash.exe",
+        os.path.expanduser(r"~\AppData\Local\Programs\Git\bin\bash.exe"),
+    ]
+    for p in candidates:
+        if os.path.isfile(p):
+            return p
+    # PATH 中查找
+    try:
+        result = subprocess.run(
+            ["where", "bash"],
+            capture_output=True, text=True, timeout=5,
+        )
+        if result.returncode == 0:
+            path = result.stdout.strip().splitlines()[0]
+            if path:
+                return path
+    except Exception:
+        pass
+    return None
+
+
 # ── AST 解析 ──
 
 @dataclass
@@ -272,12 +299,25 @@ class BashTool(BaseTool):
     """Shell 命令执行工具"""
 
     name = "bash"
-    description = (
-        "执行 shell 命令。支持运行脚本、管理文件、安装依赖等。"
-        "项目核心文件（core/ 目录和 .git/ 目录）受保护，不允许被修改或删除。"
-        "高危操作（如格式化磁盘）会被自动拦截。"
-    )
     output_type = "bash"
+
+    def __init__(self):
+        # 根据运行时 bash 检测动态描述执行引擎
+        bash_path = _find_git_bash()
+        if bash_path:
+            self.description = (
+                "执行 shell 命令。支持运行脚本、管理文件、安装依赖等。"
+                "项目核心文件（core/ 目录和 .git/ 目录）受保护，不允许被修改或删除。"
+                "高危操作（如格式化磁盘）会被自动拦截。"
+                f"当前执行引擎：bash（{bash_path}）"
+            )
+        else:
+            self.description = (
+                "执行 shell 命令。支持运行脚本、管理文件、安装依赖等。"
+                "项目核心文件（core/ 目录和 .git/ 目录）受保护，不允许被修改或删除。"
+                "高危操作（如格式化磁盘）会被自动拦截。"
+                "当前执行引擎：PowerShell（未检测到系统 bash，已降级）"
+            )
 
     parameters = {
         "type": "object",
@@ -303,23 +343,37 @@ class BashTool(BaseTool):
             _project_root = Path(__file__).parent.parent.parent.resolve()
 
             if sys.platform == "win32":
-                # PowerShell < 7 不支持 &&，替换为 ; （顺序执行，语义最接近）
-                ps_command = command.replace(" && ", " ; ").replace("\t&&\t", " ; ").replace("\n&&\n", " ;\n")
-                # 行首的 && 也处理
-                ps_command = re.sub(r"^&& ", "", ps_command, flags=re.MULTILINE)
-                # *>&1 将 PowerShell 所有输出流（含解析器错误）重定向到 stdout
-                _cmd = ["powershell", "-NoProfile", "-Command", f"{ps_command} *>&1"]
-                # 设置编码环境变量，避免 GBK 无法处理 Python 子进程输出的 Unicode（如 🐴 标记）
-                _env = os.environ.copy()
-                _env["PYTHONIOENCODING"] = "utf-8"
-                # 使用 raw bytes + 手动解码（errors='replace' 兜底），避免 text=True 在
-                # PowerShell 非标准编码下静默吞掉 stderr
-                result = subprocess.run(
-                    _cmd,
-                    capture_output=True,
-                    timeout=timeout,
-                    env=_env,
-                )
+                bash_path = _find_git_bash()
+                if bash_path:
+                    # 用真实的 bash 执行，保持 venv 依赖在 PATH 中
+                    _env = os.environ.copy()
+                    venv_dir = PROJECT_VENV if PROJECT_VENV.exists() else _PROJECT_VENV_ALT
+                    venv_scripts = str(venv_dir / "Scripts")
+                    _env["PATH"] = venv_scripts + os.pathsep + _env["PATH"]
+                    _env["PYTHONIOENCODING"] = "utf-8"
+                    result = subprocess.run(
+                        [bash_path, "-c", command],
+                        capture_output=True,
+                        timeout=timeout,
+                        env=_env,
+                    )
+                else:
+                    # 无 Git Bash → 回退 PowerShell
+                    # PowerShell < 7 不支持 &&，替换为 ; （顺序执行，语义最接近）
+                    ps_command = command.replace(" && ", " ; ").replace("\t&&\t", " ; ").replace("\n&&\n", " ;\n")
+                    # 行首的 && 也处理
+                    ps_command = re.sub(r"^&& ", "", ps_command, flags=re.MULTILINE)
+                    # *>&1 将 PowerShell 所有输出流（含解析器错误）重定向到 stdout
+                    _cmd = ["powershell", "-NoProfile", "-Command", f"{ps_command} *>&1"]
+                    _env = os.environ.copy()
+                    _env["PYTHONIOENCODING"] = "utf-8"
+                    result = subprocess.run(
+                        _cmd,
+                        capture_output=True,
+                        timeout=timeout,
+                        env=_env,
+                    )
+                # 共用输出解码（bash/PS 输出均可能为 GBK 编码）
                 raw_stdout = result.stdout or b""
                 raw_stderr = result.stderr or b""
                 # 依次尝试 UTF-8、系统编码、GBK 解码
