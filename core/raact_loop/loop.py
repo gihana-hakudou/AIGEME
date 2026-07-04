@@ -508,6 +508,17 @@ class RaActLoop:
 
         if images:
             content_parts: list[dict] = [{"type": "text", "text": user_message}]
+            # 注入图片文件路径提示（即使 LLM 不支持多模态，agent 也知道有图片可读）
+            img_paths = [img.get("_file_path", "") for img in images if img.get("_file_path")]
+            if any(img_paths):
+                paths_block = "\n".join(f"  - {p}" for p in img_paths if p)
+                content_parts.append({
+                    "type": "text",
+                    "text": (
+                        "[用户发送了图片，可通过 document.read_image(\"图片路径\") 工具读取图片内容]\n"
+                        f"图片文件路径:\n{paths_block}"
+                    ),
+                })
             content_parts.extend(images)
             messages.append({"role": "user", "content": content_parts})
         else:
@@ -598,6 +609,16 @@ class RaActLoop:
                     # 重新追加用户消息
                     if images:
                         cp = [{"type": "text", "text": user_message}]
+                        img_paths = [img.get("_file_path", "") for img in images if img.get("_file_path")]
+                        if any(img_paths):
+                            paths_block = "\n".join(f"  - {p}" for p in img_paths if p)
+                            cp.append({
+                                "type": "text",
+                                "text": (
+                                    "[用户发送了图片，可通过 document.read_image(\"图片路径\") 工具读取图片内容]\n"
+                                    f"图片文件路径:\n{paths_block}"
+                                ),
+                            })
                         cp.extend(images)
                         messages.append({"role": "user", "content": cp})
                     else:
