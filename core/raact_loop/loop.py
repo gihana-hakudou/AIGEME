@@ -19,6 +19,7 @@ from core.tools.registry import ToolRegistry
 from core.tools.parallel import ParallelExecutor, ToolCallDef
 from core.memory.memory_tracker import MemoryContextTracker
 from core.config.settings import get_config
+from core.engine.ocr import ocr_image
 
 logger = logging.getLogger(__name__)
 
