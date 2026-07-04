@@ -507,18 +507,20 @@ class RaActLoop:
                 logger.warning("[MEMORY_TRACKER] 记忆注入异常: %s", e)
 
         if images:
+            # 始终对图片进行 OCR + 注入文件路径，不依赖 API 是否报错
             content_parts: list[dict] = [{"type": "text", "text": user_message}]
-            # 注入图片文件路径提示（即使 LLM 不支持多模态，agent 也知道有图片可读）
-            img_paths = [img.get("_file_path", "") for img in images if img.get("_file_path")]
-            if any(img_paths):
-                paths_block = "\n".join(f"  - {p}" for p in img_paths if p)
-                content_parts.append({
-                    "type": "text",
-                    "text": (
-                        "[用户发送了图片，可通过 document.read_image(\"图片路径\") 工具读取图片内容]\n"
-                        f"图片文件路径:\n{paths_block}"
-                    ),
-                })
+            for img in images:
+                file_path = img.get("_file_path", "")
+                img_id = img.get("_img_id", "")
+                ocr_text = None
+                if file_path:
+                    ocr_text = await ocr_image(file_path)
+                # 构建文本块：文件路径 + OCR 结果
+                img_text = f"图片（{img_id}）：{file_path}"
+                if ocr_text:
+                    img_text += f"\n图片文字内容：{ocr_text}"
+                content_parts.append({"type": "text", "text": img_text})
+            # 同时保留 image_url 块（多模态 LLM 可用原始图像）
             content_parts.extend(images)
             messages.append({"role": "user", "content": content_parts})
         else:
@@ -609,16 +611,16 @@ class RaActLoop:
                     # 重新追加用户消息
                     if images:
                         cp = [{"type": "text", "text": user_message}]
-                        img_paths = [img.get("_file_path", "") for img in images if img.get("_file_path")]
-                        if any(img_paths):
-                            paths_block = "\n".join(f"  - {p}" for p in img_paths if p)
-                            cp.append({
-                                "type": "text",
-                                "text": (
-                                    "[用户发送了图片，可通过 document.read_image(\"图片路径\") 工具读取图片内容]\n"
-                                    f"图片文件路径:\n{paths_block}"
-                                ),
-                            })
+                        for img in images:
+                            fp = img.get("_file_path", "")
+                            iid = img.get("_img_id", "")
+                            ot = None
+                            if fp:
+                                ot = await ocr_image(fp)
+                            img_text = f"图片（{iid}）：{fp}"
+                            if ot:
+                                img_text += f"\n图片文字内容：{ot}"
+                            cp.append({"type": "text", "text": img_text})
                         cp.extend(images)
                         messages.append({"role": "user", "content": cp})
                     else:
