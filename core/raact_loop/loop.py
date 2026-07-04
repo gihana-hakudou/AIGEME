@@ -28,30 +28,69 @@ MAX_MULTIMODAL_RETRIES = 1  # 多模态降级重试次数
 MAX_TOOL_CHOICE_RETRIES = 1  # tool_choice 降级重试次数
 
 
-def _strip_images_from_messages(messages: list[dict]) -> bool:
-    """从 messages 中移除所有图片内容块。
+async def _ocr_fallback_for_messages(messages: list[dict]) -> bool:
+    """多模态降级：对 messages 中的图片运行 OCR，替换为文本。
 
-    当 LLM API 不支持多模态时调用此函数降级。遍历每条消息，
-    将其 content 中的 image_url 部分全部移除，保留纯文本。
+    当 LLM API 不支持多模态时调用。遍历每条消息，将其中的 image_url
+    内容块替换为 OCR 提取的文字 + 文件路径引用（供 agent 通过 document.read_image 重读）。
 
     Returns:
-        True 表示有图片被移除（messages 已被修改）
+        True 表示有图片被替换（messages 已被修改）
     """
+    from core.engine.ocr import ocr_image
+
     modified = False
     for msg in messages:
         content = msg.get("content")
         if not isinstance(content, list):
             continue
-        # 过滤掉 image_url 类型的内容块
-        text_parts = [p for p in content if p.get("type") != "image_url"]
-        if len(text_parts) < len(content):
-            modified = True
-            if not text_parts:
-                msg["content"] = "(图片已被移除，当前 API 不支持多模态)"
-            elif len(text_parts) == 1 and text_parts[0].get("type") == "text":
-                msg["content"] = text_parts[0].get("text", "")
+
+        new_content: list[dict] = []
+        has_image = False
+        for block in content:
+            if block.get("type") != "image_url":
+                new_content.append(block)
+                continue
+
+            has_image = True
+            file_path = block.get("_file_path", "")
+            img_id = block.get("_img_id", "")
+
+            # 尝试 OCR 提取文字
+            ocr_text = None
+            if file_path:
+                ocr_text = await ocr_image(file_path)
+
+            if ocr_text:
+                # OCR 成功 → 注入识别结果 + 文件路径
+                hint = (
+                    f"[系统：用户发送了一张图片（{img_id}），"
+                    f"当前 API 不支持多模态处理，已自动降级使用 OCR 提取图片文字]\n"
+                    f"图片文件路径: {file_path}\n"
+                    f"(可通过 document.read_image 工具重新读取此图片)\n"
+                    f"OCR 识别到的文字内容:\n{ocr_text}"
+                )
+                new_content.append({"type": "text", "text": hint})
+                logger.info("多模态降级 OCR 成功: %s (%d 字符)", file_path, len(ocr_text))
             else:
-                msg["content"] = text_parts
+                # OCR 也失败了
+                hint = (
+                    f"[系统：用户发送了一张图片（{img_id}），"
+                    f"当前 API 不支持多模态处理图片，OCR 处理失败。]\n"
+                    f"图片文件路径: {file_path}\n"
+                    f"(可通过 document.read_image 工具重新读取此图片)"
+                )
+                new_content.append({"type": "text", "text": hint})
+                logger.info("多模态降级 OCR 失败: %s", file_path)
+
+        if has_image:
+            modified = True
+            # 如果只有一条文本消息，简化为纯文本
+            if len(new_content) == 1 and new_content[0].get("type") == "text":
+                msg["content"] = new_content[0].get("text", "")
+            else:
+                msg["content"] = new_content
+
     return modified
 
 
@@ -587,12 +626,13 @@ class RaActLoop:
                     pass
                 logger.error("Instructor 调用失败 [%s]: %s\n%s", err_type, err_str, _tb.format_exc())
 
-                # ── 多模态降级检测：如果 API 不支持图片，移除图片后重试 ──
+                # ── 多模态降级检测：如果 API 不支持图片 → OCR 或提示 ──
                 if _multimodal_retries < MAX_MULTIMODAL_RETRIES and _is_multimodal_error(e):
-                    if _strip_images_from_messages(messages):
+                    ocr_modified = await _ocr_fallback_for_messages(messages)
+                    if ocr_modified:
                         _multimodal_retries += 1
                         logger.info(
-                            "检测到 API 不支持多模态，已移除图片消息，第 %d/%d 次重试",
+                            "检测到 API 不支持多模态，已降级为 OCR（第 %d/%d 次重试）",
                             _multimodal_retries, MAX_MULTIMODAL_RETRIES,
                         )
                         continue  # 重试当前 round

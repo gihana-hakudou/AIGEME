@@ -14,6 +14,9 @@ pyyaml>=6.0
 # === 图像处理 (Phase 2 多模态) ===
 pillow>=10.0.0
 
+# === OCR 文字识别兜底 ===
+rapidocr-onnxruntime>=1.4.4
+
 # === TTS (Phase 1 P1) ===
 edge-tts>=6.0.0
 

@@ -85,12 +85,16 @@ class WSServer:
         set_system_info_path(system_info_path)
         _diag(f"WSServer.__init__ project_root={project_root}")
 
-    @staticmethod
-    def _process_images(images: list[str]) -> list[dict]:
-        """同步处理图片：缩放至 1024px、转 JPEG/base64（在 run_in_executor 中执行）"""
+    def _process_images(self, images: list[str]) -> list[dict]:
+        """同步处理图片：缩放至 1024px、转 JPEG/base64，并存盘供 OCR 降级使用。
+
+        返回每张图片的 dict，新增 _file_path 和 _img_id 字段供降级逻辑使用。
+        """
         import base64
         import io
         import logging
+        import time
+        from pathlib import Path
         from PIL import Image
 
         ws_logger = logging.getLogger(__name__)
@@ -113,11 +117,21 @@ class WSServer:
                     pil_img.save(buf, format="JPEG", quality=85)
                     resized_b64 = base64.b64encode(buf.getvalue()).decode()
 
-                    result.append({
+                    # 存盘到 .AIGEME/.data/tmp/img/ 供 OCR 降级和 agent 重读
+                    ts = int(time.time() * 1000)
+                    img_dir = self._project_root / ".AIGEME" / ".data" / "tmp" / "img"
+                    img_dir.mkdir(parents=True, exist_ok=True)
+                    img_path = img_dir / f"{ts}_{i}.jpg"
+                    pil_img.save(img_path, format="JPEG", quality=85)
+
+                    entry = {
                         "type": "image_url",
                         "image_url": {"url": f"data:image/jpeg;base64,{resized_b64}"},
-                    })
-                    ws_logger.info("图片 %d 已处理: %dx%d", i, pil_img.width, pil_img.height)
+                        "_file_path": str(img_path),
+                        "_img_id": f"{ts}_{i}",
+                    }
+                    result.append(entry)
+                    ws_logger.info("图片 %d 已处理: %dx%d, %s", i, pil_img.width, pil_img.height, img_path.name)
             except Exception as e:
                 ws_logger.error("图片 %d 处理失败: %s", i, e)
         return result
