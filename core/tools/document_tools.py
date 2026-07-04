@@ -114,13 +114,16 @@ def _search_in_file(path: str, query: str, context_lines: int = 2) -> dict:
 def _read_image(path: str, max_size: int = 1024, quality: int = 85) -> dict:
     """读取图片文件，缩放并转 JPEG base64，供多模态 LLM 分析。
 
+    同时返回图片文字供非多模态 LLM 降级使用（OCR 由调用方异步执行）。
+
     Args:
         path: 图片文件路径
         max_size: 最大边长（像素），默认 1024
         quality: JPEG 质量（1-100），默认 85
 
     Returns:
-        dict: {file, width, height, size_kb, data_url} 或 {status: "error", error: ...}
+        dict: {file, width, height, size_kb, data_url, ...}
+              或 {status: "error", error: ...}
     """
     import base64
     import io
@@ -376,6 +379,14 @@ class DocumentTool(BaseTool):
             result = _read_image(path)
             if "status" in result and result["status"] == "error":
                 return {"status": "error", "error": result["error"]}
+            # 异步跑 OCR 提取文字（非多模态 LLM 降级用）
+            try:
+                from core.engine.ocr import ocr_image
+                ocr_text = await ocr_image(path)
+                if ocr_text:
+                    result["ocr_text"] = ocr_text
+            except Exception:
+                pass
             return {
                 "status": "ok",
                 "result": result,

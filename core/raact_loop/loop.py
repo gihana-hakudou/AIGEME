@@ -239,6 +239,10 @@ def _extract_tool_content(inner: Any, output_type: str = "json") -> str:
                     f"尺寸: {width}x{height}",
                     f"大小: {size_kb} KB",
                 ]
+                # 图片文字内容（OCR 提取，非多模态 LLM 降级用）
+                ocr_text = inner_result.get("ocr_text", "")
+                if ocr_text:
+                    lines.append(f"\n图片文字内容：\n{ocr_text[:2000]}")
                 # 浏览器截图可能有 stdout/stderr
                 stdout = inner_result.get("stdout", "")
                 stderr = inner_result.get("stderr", "")
