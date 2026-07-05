@@ -64,8 +64,19 @@ class MemoryGraphMixin:
                 )
                 method = "graph_search_fuzzy"
             else:
-                # 降级：正文搜索（含 tags）
-                sr = await self._search_memory(memory_dir, index, seed)
+                # 标题→文件名映射兜底（兼容文件名非语义化的记忆）
+                resolved = await self._find_by_title(memory_dir, seed)
+                if resolved:
+                    results = await self._graph_search_memory(
+                        memory_dir,
+                        resolved,
+                        query_tags,
+                        max_depth,
+                    )
+                    method = "graph_search"
+                else:
+                    # 降级：正文搜索（含 tags）
+                    sr = await self._search_memory(memory_dir, index, seed)
                 search_results = sr.get("result", {}).get("results", [])
                 results = []
                 for r in search_results:

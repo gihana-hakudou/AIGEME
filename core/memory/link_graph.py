@@ -255,6 +255,72 @@ class LinkGraph:
 
         return dead_links
 
+    async def rename_node(self, old_name: str, new_name: str) -> None:
+        """重命名 LINKS.md 中的节点，更新所有引用。
+
+        自动更新：
+        - 节点表中的文件名
+        - 链接表中的来源和目标
+        - 断链表中的来源和目标
+
+        Args:
+            old_name: 旧文件名（不含 .md）
+            new_name: 新文件名（不含 .md）
+        """
+        if old_name == new_name:
+            return
+
+        from core.tools.file_lock import LockManager
+        lm = await LockManager.get_instance()
+
+        async with lm.acquire_write(self._links_path):
+            if not self._links_path.exists():
+                return
+
+            content = self._links_path.read_text("utf-8")
+            parsed = self._parse_links_content(content)
+            forward = parsed["forward"]
+            nodes = parsed.get("_nodes", {})
+            dead_links_raw = parsed.get("_dead_links", [])
+
+            changed = False
+
+            # 1. 更新节点表
+            if old_name in nodes:
+                nodes[new_name] = nodes.pop(old_name)
+                changed = True
+
+            # 2. 更新正向图：旧名作为来源
+            if old_name in forward:
+                forward[new_name] = forward.pop(old_name)
+                changed = True
+
+            # 3. 更新正向图：旧名作为目标
+            for source in list(forward.keys()):
+                targets = forward[source]
+                if old_name in targets:
+                    targets.discard(old_name)
+                    targets.add(new_name)
+                    changed = True
+
+            # 4. 更新断链表
+            for dl in dead_links_raw:
+                if dl["source"] == old_name:
+                    dl["source"] = new_name
+                    changed = True
+                if dl["target"] == old_name:
+                    dl["target"] = new_name
+                    changed = True
+
+            if changed:
+                new_content = self._format_links_content(
+                    forward, nodes, dead_links_raw
+                )
+                self._links_path.write_text(new_content, encoding="utf-8")
+                logger.info(
+                    "LINKS.md 节点已重命名: %s → %s", old_name, new_name
+                )
+
     async def find_orphans(self) -> list[str]:
         """找到孤立文件（在 memory/ 目录中但不在任何节点的入链/出链中）。
 

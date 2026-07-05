@@ -13,6 +13,7 @@ from core.engine.compressor import ContextCompressor
 from core.engine.instructor_client import InstructorClient
 from litellm.exceptions import ContextWindowExceededError
 from core.engine.models import RaActResponse
+from core.engine.message_validator import validate_inplace as _validate_messages
 from core.protocols.blocks import Block
 from core.raact_loop.stream_router import route_response
 from core.tools.registry import ToolRegistry
@@ -485,6 +486,9 @@ class RaActLoop:
         # 记录当前轮次 in-loop 消息起始位置（排除 system + history + user）
         current_round_start = len(messages)
 
+        # 校验初始消息顺序（防止历史加载/压缩后引入的问题消息）
+        messages = _validate_messages(messages)
+
         # 当前轮次的对话拼接结果
         round_messages: list[Any] = []
         final_say: str | None = None
@@ -540,11 +544,14 @@ class RaActLoop:
                     self._prompt_assembler._force_memory_tool = False
                     logger.info("强制 tool_choice=memory（指定函数名方式，记忆整理周期触发）")
 
+            # 校验消息顺序（防止 tool message 顺序错误的 Jinja 500）
+            _messages_dicts = _validate_messages(messages)
+
             # 调用 Instructor（流式推送 thinking/speech 到前端）
             response: RaActResponse | None = None
             try:
                 response = await self._instructor.create_completion_stream(
-                    messages=[self._dict_to_message(m) for m in messages],
+                    messages=[self._dict_to_message(m) for m in _messages_dicts],
                     send_block=send_block,
                     tools=self._registry.schemas,
                     cancelled_check=lambda: self._cancelled,
@@ -583,6 +590,7 @@ class RaActLoop:
                         messages.append({"role": "user", "content": cp})
                     else:
                         messages.append({"role": "user", "content": user_message})
+                    messages = _validate_messages(messages)
                     logger.info("强制丢弃旧消息后重试 LLM 调用（保留 %d 条）", len(compressed))
                     continue  # 重试当前轮
                 # 压缩后仍未解决 → 发错误 block 给前端并结束
@@ -825,6 +833,11 @@ class RaActLoop:
                 # ════════════════════════════════════════════════════════════
                 # Step D: 推送 tool_result + 构造 tool_msg（保持原始顺序）
                 # ════════════════════════════════════════════════════════════
+                # 收集所有 tool_msg 和图片注入消息，先追加 tool_msg 再追加图片 user
+                # 避免图片注入打断 tool→tool 消息链导致 Jinja 500 错误
+                pending_tool_msgs: list[dict] = []
+                pending_image_msgs: list[dict] = []
+
                 for i, (tc, result) in enumerate(zip(response.tool_calls, parallel_results)):
                     tool_call_id = tool_call_ids[i]
 
@@ -854,7 +867,7 @@ class RaActLoop:
                         )
                     )
 
-                    # 构造 tool_msg 加入 messages
+                    # 构造 tool_msg（暂不追加，先收集）
                     tool_msg = {
                         "role": "tool",
                         "content": tool_content,
@@ -862,15 +875,13 @@ class RaActLoop:
                     }
                     logger.info("[TOOL_DEBUG] 构造 tool_msg: role=tool, content=%s, tool_call_id=%s",
                         tool_msg["content"][:80], tool_call_id)
-                    messages.append(tool_msg)
+                    pending_tool_msgs.append(tool_msg)
 
-                    # ── 图片读取结果：注入多模态 user 消息让 LLM 能"看到"图片 ──
+                    # 收集图片注入消息（暂不追加，等所有 tool_msg 都加完再说）
                     if (result.get("status") == "ok"
                         and output_type == "image"
                         and isinstance(inner, dict)
                         and result.get("_ss_data_url")):
-                        data_url = result["_ss_data_url"]
-                        file_path = inner.get("file", "")
                         data_url = result["_ss_data_url"]
                         file_path = inner.get("file", "")
                         img_user_msg = {
@@ -880,13 +891,21 @@ class RaActLoop:
                                 {"type": "image_url", "image_url": {"url": data_url}},
                             ],
                         }
-                        messages.append(img_user_msg)
-                        logger.info("[TOOL_DEBUG] 图片已注入多模态消息: %s (%dx%d)",
+                        pending_image_msgs.append(img_user_msg)
+                        logger.info("[TOOL_DEBUG] 图片已收集（待注入）: %s (%dx%d)",
                             file_path, inner.get("width", 0), inner.get("height", 0))
 
                     # 保留 tool_name 供 persistence/PAE 检测用
                     tool_msg_with_name = dict(tool_msg, tool_name=tc.name)
                     tool_interactions.append(tool_msg_with_name)
+
+                # 统一追加：先 tool → 再 image user
+                # 确保 tool→tool 消息链完整，不被打断
+                messages.extend(pending_tool_msgs)
+                if pending_image_msgs:
+                    messages.extend(pending_image_msgs)
+                    logger.info("[TOOL_DEBUG] 共注入 %d 条图片分析消息（已在所有 tool_msg 之后）",
+                        len(pending_image_msgs))
 
                 # 本轮调用了记忆工具 → 重置整理提醒计数器
                 # （agent 既然主动写了记忆，就不需要再提醒了）

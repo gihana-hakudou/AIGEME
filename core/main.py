@@ -25,6 +25,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from core.mcp_server.manager import McpServerManager
+from core.memory.edit_tools import (
+    MemoryEditContentTool,
+    MemoryEditImportanceTool,
+    MemoryEditTagsTool,
+    MemoryEditTitleTool,
+)
 from core.memory.reminder_tool import ReminderTool
 from core.memory.tools import MemoryTool
 from core.tools.bash_tools import BashTool
@@ -117,6 +123,10 @@ def create_app() -> FastAPI:
     registry = init_registry(
         DocumentTool(),
         MemoryTool(),
+        MemoryEditContentTool(),
+        MemoryEditTagsTool(),
+        MemoryEditTitleTool(),
+        MemoryEditImportanceTool(),
         ReminderTool(),
         SkillTool(),
         BashTool(),

@@ -244,7 +244,15 @@ class WSServer:
                 from core.tools.document_tools import DocumentTool as _DT
                 if isinstance(document_tool, _DT):
                     document_tool.set_char_id(character_id)
-            _diag("handle_connection: memory_tool & document_tool & reminder_tool char_id set")
+
+            # 设置记忆编辑工具（拆分版）的当前角色 ID
+            for _tool_name in ("memory_edit_content", "memory_edit_tags",
+                               "memory_edit_title", "memory_edit_importance"):
+                _tool = self._registry.get(_tool_name)
+                if _tool:
+                    _tool.set_char_id(character_id)
+
+            _diag("handle_connection: memory_tool & edit_tools & document_tool & reminder_tool char_id set")
 
             # 初始化持久化
             data_dir = self._project_root / ".AIGEME" / ".data"

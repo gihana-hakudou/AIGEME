@@ -11,6 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from core.memory.index import MemoryIndex
+from core.memory.yaml_handler import YamlFrontmatter
 from core.memory.ops import (
     MemoryCrudMixin,
     MemoryGraphMixin,
@@ -112,7 +113,6 @@ class MemoryTool(
                     "search",
                     "list",
                     "del",
-                    "edit",
                     "link",
                     "audit",
                     "merge",
@@ -121,14 +121,16 @@ class MemoryTool(
                 ],
                 "description": (
                     "add=新增 / read=读取全文 / search=搜索关键词 / "
-                    "list=浏览索引 / del=删除文件 / edit=编辑文件 / "
+                    "list=浏览索引 / del=删除文件 / "
                     "link=建立链接 / audit=扫描审计 / merge=合并文件 / "
-                    "prune=清理孤立文件 / graph_search=图谱扩散检索"
+                    "prune=清理孤立文件 / graph_search=图谱扩散检索。\n"
+                    "⚠️ edit 已拆为独立工具（memory_edit_content / memory_edit_tags / "
+                    "memory_edit_title / memory_edit_importance），请直接调用它们。"
                 ),
             },
             "content": {
                 "type": "string",
-                "description": "记忆内容。add/edit 时使用",
+                "description": "记忆内容。add 时使用",
             },
             "type": {
                 "type": "string",
@@ -150,14 +152,6 @@ class MemoryTool(
                 "type": "string",
                 "description": "搜索关键词。search 时必填",
             },
-            "old_string": {
-                "type": "string",
-                "description": "编辑正文时传原文（修改标签/重要度时无需此参数）",
-            },
-            "new_string": {
-                "type": "string",
-                "description": "编辑正文时传新内容（可传空字符串删除原文；改标签/重要度时无需此参数）",
-            },
             "include_all": {
                 "type": "boolean",
                 "description": "list 时是否包含过期文件",
@@ -172,11 +166,7 @@ class MemoryTool(
             "tags": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "标签列表。add 时可选，给新增记忆附加标签；edit 时可选，替换记忆的所有标签（如 [工作, 项目]）",
-            },
-            "new_importance": {
-                "type": "integer",
-                "description": "新重要度 1-5。edit 时可选，更新记忆文件的整体重要度",
+                "description": "标签列表。add 时可选，给新增记忆附加标签。",
             },
             "tags_filter": {
                 "type": "array",
@@ -217,14 +207,14 @@ class MemoryTool(
                 "type": "string",
                 "description": (
                     "记忆标题（add 时可选，存入 frontmatter 显示用，同标题自动追加到同一文件）；"
-                    "read/del/edit 时可选（与 id 二选一，按标题查找）"
+                    "read/del 时可选（与 id 二选一，按标题查找）"
                 ),
             },
             "id": {
                 "type": "string",
                 "description": (
                     "记忆唯一标识（自动生成，8位时间码+随机数）。"
-                    "read/del/edit 时可选（与 title 二选一，优先精确匹配）"
+                    "read/del 时可选（与 title 二选一，优先精确匹配）"
                 ),
             },
         },
@@ -237,12 +227,9 @@ class MemoryTool(
         content: str | None = None,
         type: str | None = None,
         query: str | None = None,
-        old_string: str | None = None,
-        new_string: str | None = None,
         include_all: bool = False,
         importance: int = 3,
         tags: list[str] | None = None,
-        new_importance: int | None = None,
         tags_filter: list[str] | None = None,
         src: str | None = None,
         tgt: str | None = None,
@@ -270,7 +257,11 @@ class MemoryTool(
             if not content:
                 return {"status": "error", "error": "add 操作需要 content（内容）参数"}
             _type = type or "fact"
-            _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
+            _id: str
+            if title:
+                _id = YamlFrontmatter.sanitize_filename(title)
+            else:
+                _id = datetime.now().strftime("%y%m%d%H%M%S") + str(random.randint(10, 99))
 
             # 第一步：内容相似度查重（不依赖是否有 title）
             similar = await self._check_similar_internal(memory_dir, content)
@@ -341,20 +332,6 @@ class MemoryTool(
             if not _lookup:
                 return {"status": "error", "error": "del 需要 id 或 title 参数"}
             return await self._del_memory(memory_dir, index, _lookup)
-
-        if operation == "edit":
-            if not _lookup:
-                return {"status": "error", "error": "edit 需要 id 或 title 参数"}
-            _edit_tags = tags or []
-            return await self._edit_memory(
-                memory_dir,
-                index,
-                _lookup,
-                old_string or "",
-                new_string,
-                _edit_tags,
-                new_importance,
-            )
 
         # ── Brain Tools ───────────────────────────────────────
 

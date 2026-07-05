@@ -75,6 +75,11 @@ def _classify_tool(name: str, arguments: dict) -> str:
         logger.warning("[PARALLEL] memory 未知 operation=%s, 按 compound 处理", op)
         return "compound"
 
+    # 拆分的记忆编辑工具 → 统一当 write 处理
+    if name in ("memory_edit_content", "memory_edit_tags",
+                 "memory_edit_title", "memory_edit_importance"):
+        return "write"
+
     if name == "document":
         op = arguments.get("operation", "")
         if op in _DOCUMENT_READ_OPS:
@@ -118,6 +123,14 @@ def _resolve_resource_path(name: str, arguments: dict) -> str | None:
         if op == "list":
             # list 操作不针对特定文件
             return None
+        return None
+
+    # 拆分的记忆编辑工具 — 按 title 分组
+    if name in ("memory_edit_content", "memory_edit_tags",
+                 "memory_edit_title", "memory_edit_importance"):
+        title = arguments.get("title")
+        if title:
+            return f"memory:{title}"
         return None
 
     return None

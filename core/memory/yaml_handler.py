@@ -399,6 +399,28 @@ class YamlFrontmatter:
         return sanitized
 
     @staticmethod
+    def sanitize_filename(title: str) -> str:
+        """将标题转为安全的文件名。
+
+        - 替换 Windows 非法字符 \\ / : * ? " < > | → _
+        - 截断至 200 字符
+        - 去除首尾空白和点号
+        - 空结果回退为 "untitled"
+
+        Args:
+            title: 原始标题字符串
+
+        Returns:
+            安全的文件名（不含 .md 后缀）
+        """
+        sanitized = re.sub(r'[\\/:*?"<>|]', "_", title)
+        sanitized = sanitized.strip(". ")
+        sanitized = sanitized[:200]
+        if not sanitized:
+            sanitized = "untitled"
+        return sanitized
+
+    @staticmethod
     def _extract_body(content: str) -> str:
         """
         从可能包含 frontmatter 的内容中提取纯正文。
