@@ -48,7 +48,7 @@ _MEMORY_READ_OPS: frozenset[str] = frozenset({
     "read", "search", "list", "check_similar", "graph_search",
 })
 _MEMORY_WRITE_OPS: frozenset[str] = frozenset({
-    "add", "edit", "del", "link",
+    "add", "del", "link",
 })
 _MEMORY_COMPOUND_OPS: frozenset[str] = frozenset({
     "audit", "merge", "refactor", "prune",

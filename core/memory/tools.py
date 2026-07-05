@@ -1,4 +1,4 @@
-"""MemoryTool — 记忆操作打包工具 (add/read/search/list/del/edit/graph_search)
+"""MemoryTool — 记忆操作打包工具 (add/read/search/list/del/link/audit/merge/prune/graph_search)
 
 拆分说明：具体操作实现在 core/memory/ops/ 中各 mixin 文件中。
 本文件仅保留：状态管理、execute 调度、模块级辅助函数。
@@ -52,8 +52,9 @@ class MemoryTool(
 
     name = "memory"
     description = (
-        "长期记忆操作：add/read/search/list/del/edit/link/"
-        "audit/merge/prune/graph_search 共 11 种。"
+        "长期记忆操作：add/read/search/list/del/link/"
+        "audit/merge/prune/graph_search 共 10 种。"
+        "编辑功能已拆分为独立工具（memory_edit_content / memory_edit_title 等），"
         "详细规范请用 skill(operation=\"use\", name=\"memory-management-guide\") 查看完整指南。"
     )
 
@@ -124,8 +125,8 @@ class MemoryTool(
                     "list=浏览索引 / del=删除文件 / "
                     "link=建立链接 / audit=扫描审计 / merge=合并文件 / "
                     "prune=清理孤立文件 / graph_search=图谱扩散检索。\n"
-                    "⚠️ edit 已拆为独立工具（memory_edit_content / memory_edit_tags / "
-                    "memory_edit_title / memory_edit_importance），请直接调用它们。"
+                    "内容的增删改请用: add / del / memory_edit_content / "
+                    "memory_edit_tags / memory_edit_title / memory_edit_importance。"
                 ),
             },
             "content": {

@@ -388,7 +388,7 @@ class MemoryCrudMixin:
         tags: list[str] | None = None,
     ) -> dict:
         """向已存在的记忆文件追加条目（查重命中后使用）"""
-        file_path = memory_dir / filename
+        file_path = memory_dir / (filename if filename.endswith(".md") else f"{filename}.md")
         now = datetime.now()
 
         lm = await LockManager.get_instance()
