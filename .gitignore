@@ -84,3 +84,6 @@ prompt_bunny.json
 
 # Downloads
 downloads/
+
+# Mikan local subscriptions
+.AIGEME/.skill/mikan-rss/scripts/mikan_subscriptions.json
