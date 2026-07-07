@@ -1,14 +1,14 @@
 ---
 name: mikan-rss
 description: 搜索蜜柑计划（Mikan Project）番剧资源、管理追番列表、下载种子文件、导出种子列表
-version: 1.1.0
+version: 1.2.0
 author: AIGEME
 trigger: 用户要求搜索/下载/追番动漫资源时
 parameters:
   - name: keyword
     type: string
     description: 番剧搜索关键词
-    required: true
+    required: false
   - name: page
     type: integer
     description: 搜索结果页码，默认第1页
@@ -16,6 +16,10 @@ parameters:
   - name: group_id
     type: integer
     description: 字幕组ID，筛选特定字幕组的资源
+    required: false
+  - name: bangumi_id
+    type: string
+    description: 蜜柑番剧ID，直接通过RSS接口获取而非搜索（可绕过搜索API限制）
     required: false
   - name: episode
     type: string
@@ -79,6 +83,14 @@ python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py search "葬送的芙莉莲"
 结果表格包含：序号、字幕组、集数、画质、大小、日期、番剧名。
 模糊搜索时能一眼区分不同番剧。
 
+### 按番剧ID搜索（推荐，绕过搜索API限制）
+
+当搜索API搜不到时（如新番刚上线），可直接用 `season` 命令查到 bangumiId 后直连：
+
+```bash
+python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py search --bangumi-id 3981 --group-id 615
+```
+
 ### 按字幕组筛选
 
 ```bash
@@ -94,6 +106,9 @@ python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py search "葬送的芙莉莲"
 ```bash
 # 下载最新一集
 python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py download "葬送的芙莉莲" --group-id 583
+
+# 通过番剧ID下载（绕过搜索API限制）
+python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py download --bangumi-id 3981 --group-id 615 --episode 1
 
 # 下载指定集数
 python .AIGEME/.skill/mikan-rss/scripts/mikan_cli.py download "葬送的芙莉莲" --group-id 583 --episode 38

@@ -77,3 +77,10 @@ mikanani_*.png
 
 # Image generation artifacts
 .AIGEME/.skill/image_generation/
+
+# Local prompt configs
+prompt.json
+prompt_bunny.json
+
+# Downloads
+downloads/

@@ -45,7 +45,7 @@ if sys.stderr.encoding and sys.stderr.encoding.upper() in ('GBK', 'CP936', 'GB23
 # Constants
 # ---------------------------------------------------------------------------
 
-BASE_URL = "https://mikanani.me"
+BASE_URL = "https://mikanime.tv"
 SEARCH_URL = f"{BASE_URL}/RSS/Search"
 BANGUMI_URL = f"{BASE_URL}/RSS/Bangumi"
 MAIN_URL = f"{BASE_URL}/"
@@ -55,7 +55,7 @@ REQUEST_TIMEOUT = 15  # seconds
 
 # XML namespaces used in Mikan RSS
 NS = {
-    "torrent": "https://mikanani.me/0.1/",
+    "torrent": "https://mikanime.tv/0.1/",
 }
 
 # ---------------------------------------------------------------------------
@@ -463,18 +463,27 @@ def cmd_season(args: argparse.Namespace) -> None:
 
 def cmd_search(args: argparse.Namespace) -> None:
     """Search for anime torrents and display results in a table."""
-    keyword = args.keyword
+    keyword = args.keyword.strip().strip('"').strip("'") if args.keyword else ""
     page = args.page
     group_id = args.group_id
     limit = args.limit
+    bangumi_id = args.bangumi_id
 
-    print(f"\n  Searching for \"{keyword}\" (page {page}) ...\n")
-
-    items, _ = fetch_search(keyword, page=page, group_id=group_id)
-    total = len(items)
+    if bangumi_id:
+        print(f"\n  Fetching bangumi ID \"{bangumi_id}\" ...\n")
+        items = fetch_bangumi(bangumi_id, group_id=group_id)
+        total = len(items)
+    elif keyword:
+        print(f"\n  Searching for \"{keyword}\" (page {page}) ...\n")
+        items, _ = fetch_search(keyword, page=page, group_id=group_id)
+        total = len(items)
+    else:
+        print("  Error: provide either a keyword or --bangumi-id.\n")
+        return
 
     if total == 0:
-        print(f"  No results for \"{keyword}\" (page {page}). Try a different keyword or page.\n")
+        label = bangumi_id or keyword
+        print(f"  No results for \"{label}\" (page {page}). Try a different keyword or page.\n")
         return
 
     _print_table(items, limit=limit, start_index=1)
@@ -665,17 +674,25 @@ def _download_file(url: str, dest_path: str) -> None:
 
 def cmd_download(args: argparse.Namespace) -> None:
     """Search for an anime and download the specified episode's .torrent file."""
-    keyword = args.keyword
+    keyword = args.keyword.strip().strip('"').strip("'") if args.keyword else ""
     group_id = args.group_id
     episode = args.episode
     dest_dir = args.dir
+    bangumi_id = args.bangumi_id
 
-    print(f"\n  Searching for \"{keyword}\" ...\n")
-
-    items, _ = fetch_search(keyword, page=1, group_id=group_id)
+    if bangumi_id:
+        print(f"\n  Fetching bangumi ID \"{bangumi_id}\" ...\n")
+        items = fetch_bangumi(bangumi_id, group_id=group_id)
+    elif keyword:
+        print(f"\n  Searching for \"{keyword}\" ...\n")
+        items, _ = fetch_search(keyword, page=1, group_id=group_id)
+    else:
+        print("  Error: provide either a keyword or --bangumi-id.\n")
+        return
 
     if not items:
-        print("  No results found.\n")
+        label = bangumi_id or keyword
+        print(f"  No results for \"{label}\".\n")
         return
 
     # --all: download all batch/full-season packs (items without episode number)
@@ -730,8 +747,8 @@ def cmd_download(args: argparse.Namespace) -> None:
         target = seen[0]
         print(f"  Latest episode detected: episode {target.episode}\n")
     else:
-        ep_str = str(episode)
-        candidates = [it for it in items if it.episode == ep_str]
+        ep_str = str(episode).lstrip("0") or "0"
+        candidates = [it for it in items if (it.episode or "").lstrip("0") == ep_str]
         if not candidates:
             # Fallback: check if there are batch packs with no episode number
             batch = [it for it in items if not it.episode]
@@ -819,7 +836,7 @@ def _save_subscriptions(subs: List[Subscription]) -> None:
 
 def cmd_subscribe_add(args: argparse.Namespace) -> None:
     """Add an anime to the subscription list."""
-    name = args.name
+    name = args.name.strip().strip('"').strip("'") if args.name else ""
     group_id = str(args.group_id) if args.group_id else ""
     group_name = args.group_name if args.group_name else ""
 
@@ -977,7 +994,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- search ---
     p_search = sub.add_parser("search", help="Search for anime torrents")
-    p_search.add_argument("keyword", type=str, help="Anime name or keyword")
+    p_search.add_argument("keyword", type=str, nargs="?", default="",
+                          help="Anime name or keyword (optional if --bangumi-id given)")
+    p_search.add_argument("--bangumi-id", type=str, default=None,
+                          help="Mikan bangumi ID (bypasses keyword search)")
     p_search.add_argument("--page", type=int, default=1, help="Page number (default: 1)")
     p_search.add_argument("--group-id", type=str, default=None,
                           help="Subtitle group ID to filter by")
@@ -1003,7 +1023,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- download ---
     p_dl = sub.add_parser("download", help="Download a .torrent file")
-    p_dl.add_argument("keyword", type=str, help="Anime name or keyword")
+    p_dl.add_argument("keyword", type=str, nargs="?", default="",
+                      help="Anime name or keyword (optional if --bangumi-id given)")
+    p_dl.add_argument("--bangumi-id", type=str, default=None,
+                      help="Mikan bangumi ID (bypasses keyword search)")
     p_dl.add_argument("--group-id", type=str, default=None,
                       help="Subtitle group ID to filter by")
     p_dl.add_argument("--episode", type=int, default=None,
