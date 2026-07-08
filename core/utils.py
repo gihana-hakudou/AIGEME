@@ -86,6 +86,7 @@ PROVIDER_DEFAULTS: dict[str, dict] = {
     "custom_openai": {"api_base": "", "native": False},
     "anthropic": {"api_base": "https://api.anthropic.com", "native": True},
     "deepseek": {"api_base": "https://api.deepseek.com", "native": True},
+    "xiaomi_mimo": {"api_base": "https://api.xiaomimimo.com/v1", "native": False},
     "dashscope": {"api_base": "https://dashscope.aliyuncs.com/compatible-mode/v1", "native": False},
     "bigmodel": {"api_base": "https://open.bigmodel.cn/api/paas/v4", "native": False},
     "azure": {"api_base": "https://YOUR_RESOURCE.openai.azure.com", "native": True},
