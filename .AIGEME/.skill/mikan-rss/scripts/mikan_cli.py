@@ -502,7 +502,55 @@ def cmd_search(args: argparse.Namespace) -> None:
 
 def cmd_list_groups(args: argparse.Namespace) -> None:
     """Search for an anime and show all subtitle groups with their IDs."""
-    keyword = args.keyword
+    keyword = getattr(args, 'keyword', None)
+    bangumi_id = getattr(args, 'bangumi_id', None)
+
+    # Mode 1: Direct bangumi ID lookup
+    if bangumi_id:
+        print(f"\n  Fetching groups for bangumiId={bangumi_id} ...\n")
+        try:
+            bg_url = f"{BASE_URL}/Home/Bangumi/{bangumi_id}"
+            bg_html = _fetch_url(bg_url)
+            if not bg_html:
+                print("  Failed to fetch bangumi page\n")
+                return
+
+            # Parse subgroup-text divs
+            group_ids: Dict[str, str] = {}
+            for m in re.finditer(
+                r'<div class="subgroup-text"[^>]*id="(\d+)"[^>]*>.*?'
+                r'<a[^>]*>([^<]+)</a>',
+                bg_html, re.DOTALL
+            ):
+                sid = m.group(1)
+                gname = m.group(2).strip()
+                gname = html.unescape(gname)
+                if gname and sid not in group_ids.values():
+                    group_ids[gname] = sid
+
+            if not group_ids:
+                print("  No groups found on bangumi page\n")
+                return
+
+            # Print results
+            col_name_len = max(12, max(len(g) for g in group_ids.keys()))
+            col_id_len = 8
+            sep = "-" * (col_name_len + col_id_len + 4)
+            print(f"  {sep}")
+            print(f"  {'字幕组':<{col_name_len}} {'字幕组ID':<{col_id_len}}")
+            print(f"  {sep}")
+            for name, gid in sorted(group_ids.items()):
+                print(f"  {name:<{col_name_len}} {gid:<{col_id_len}}")
+            print(f"  {sep}")
+            print(f"  ({len(group_ids)} group(s) found, use --group-id <ID> to filter)\n")
+        except Exception as e:
+            print(f"  Error: {e}\n")
+        return
+
+    # Mode 2: Keyword search
+    if not keyword:
+        print("  Error: please provide keyword or --bangumi-id\n")
+        return
 
     print(f"\n  Scanning groups for \"{keyword}\" ...\n")
 
@@ -527,12 +575,11 @@ def cmd_list_groups(args: argparse.Namespace) -> None:
             ep_html = _fetch_url(items[0].link)
             m = re.search(r'bangumiId=(\d+)', ep_html)
             if m:
-                bangumi_id = m.group(1)
+                bg_id = m.group(1)
                 # Fetch bangumi page to get all subgroup IDs and names
-                bg_url = f"{BASE_URL}/Home/Bangumi/{bangumi_id}"
+                bg_url = f"{BASE_URL}/Home/Bangumi/{bg_id}"
                 bg_html = _fetch_url(bg_url)
-                # Parse subgroup-text divs: <div class="subgroup-text" id="123">
-                #   <a href="/Home/PublishGroup/..." ...>字幕组名</a>
+                # Parse subgroup-text divs
                 for m2 in re.finditer(
                     r'<div class="subgroup-text"[^>]*id="(\d+)"[^>]*>.*?'
                     r'<a[^>]*>([^<]+)</a>',
@@ -540,7 +587,6 @@ def cmd_list_groups(args: argparse.Namespace) -> None:
                 ):
                     sid = m2.group(1)
                     gname = m2.group(2).strip()
-                    # Decode HTML entities
                     gname = html.unescape(gname)
                     if gname and sid not in group_ids.values():
                         group_ids[gname] = sid
@@ -1006,7 +1052,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     # --- list-groups ---
     p_groups = sub.add_parser("list-groups", help="List all subtitle groups for an anime")
-    p_groups.add_argument("keyword", type=str, help="Anime name or keyword")
+    p_groups.add_argument("keyword", nargs="?", default=None, help="Anime name or keyword")
+    p_groups.add_argument("--bangumi-id", type=str, default=None,
+                          help="Directly fetch groups by bangumi ID (bypasses search)")
 
     # --- season ---
     p_season = sub.add_parser("season", help="Show current season's anime lineup")

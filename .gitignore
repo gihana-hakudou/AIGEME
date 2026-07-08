@@ -38,6 +38,9 @@ log/
 *.tmp
 *.temp
 
+# Backup files
+*.bak
+
 # Browser daemon runtime
 core/character_data/browser/
 
