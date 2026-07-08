@@ -79,13 +79,13 @@ class BrowserExecuteTool(BaseTool):
         import base64
         import time
         from pathlib import Path
-        # 截图存到 character_data/browser/tmp 目录（与 helpers.py 保持一致）
-        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / "character_data" / "browser" / "tmp"
+        # 截图存到 .AIGEME/.data/tmp/img/ 目录（供 OCR 降级和多模态注入）
+        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "img"
         _ss_dir.mkdir(parents=True, exist_ok=True)
         _taken_screenshots: list[str] = []
 
-        # 下载目录
-        _download_dir = _ss_dir / "downloads"
+        # 下载目录（与 daemon.py 保持一致）
+        _download_dir = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "browser-control" / "downloads"
         _download_dir.mkdir(parents=True, exist_ok=True)
 
         # 包装 capture_screenshot 以记录截图路径并重定向到 tmp 目录

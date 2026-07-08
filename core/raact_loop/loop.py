@@ -878,22 +878,32 @@ class RaActLoop:
                     pending_tool_msgs.append(tool_msg)
 
                     # 收集图片注入消息（暂不追加，等所有 tool_msg 都加完再说）
+                    # 双轨制：OCR 文字降级 + image_url 多模态，与用户上传图片的处理方式一致
                     if (result.get("status") == "ok"
                         and output_type == "image"
                         and isinstance(inner, dict)
                         and result.get("_ss_data_url")):
                         data_url = result["_ss_data_url"]
                         file_path = inner.get("file", "")
+                        # 始终对截图进行 OCR，不依赖 API 是否报错
+                        ocr_text = None
+                        if file_path:
+                            ocr_text = await ocr_image(file_path)
+                        # 构建文本块：文件路径 + OCR 结果（非多模态模型降级后仍可看到文字）
+                        img_text = f"浏览器截图：{file_path}"
+                        if ocr_text:
+                            img_text += f"\n图片文字内容：{ocr_text}"
                         img_user_msg = {
                             "role": "user",
                             "content": [
-                                {"type": "text", "text": f"这是我刚才读取的图片文件：{file_path}，请分析它的内容。"},
+                                {"type": "text", "text": img_text},
                                 {"type": "image_url", "image_url": {"url": data_url}},
                             ],
                         }
                         pending_image_msgs.append(img_user_msg)
-                        logger.info("[TOOL_DEBUG] 图片已收集（待注入）: %s (%dx%d)",
-                            file_path, inner.get("width", 0), inner.get("height", 0))
+                        logger.info("[TOOL_DEBUG] 图片已收集（待注入）: %s (%dx%d)%s",
+                            file_path, inner.get("width", 0), inner.get("height", 0),
+                            f"，OCR 已提取" if ocr_text else "（图片区域无文字）")
 
                     # 保留 tool_name 供 persistence/PAE 检测用
                     tool_msg_with_name = dict(tool_msg, tool_name=tc.name)
