@@ -456,6 +456,10 @@ class InstructorClient:
                     arguments=args,
                 ))
 
+        # 日志记录原始 LLM 输出（供调试 TTS 标签是否被正常产出）
+        if full_content:
+            logger.info(f"[TTS_RAW] full_content={full_content[:200]!r}")
+
         return RaActResponse(
             reasoning=reasoning_content,
             say=re.sub(
