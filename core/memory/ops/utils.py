@@ -6,7 +6,6 @@ from datetime import datetime
 from pathlib import Path
 
 import jieba
-jieba.initialize()
 
 from core.memory.yaml_handler import YamlFrontmatter
 from core.tools.file_lock import LockManager

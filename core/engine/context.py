@@ -115,15 +115,13 @@ class PromptAssembler:
         if overview:
             parts.append(f"## 记忆系统\n\n{overview}")
 
-        # 5. 可用表情
+        # 5. 可用表情（格式见 system.md，此处仅列出当前角色可用表情）
         expression_list = self._get_available_expressions()
         if expression_list:
             expr_str = ", ".join(expression_list)
             parts.append(
-                f"## 立绘表情\n\n"
-                f"当前可用表情: {expr_str}\n"
-                f"在对话输出末尾附加 <tachie-e>表情名</tachie-e> 来切换表情。\n"
-                f'比如 "今天天气真好啊<tachie-e>happy</tachie-e>"'
+                f"## 可用表情\n\n"
+                f"当前角色可用: {expr_str}\n"
             )
 
         # 6. 已加载技能 — 优先从 SkillManager 动态获取
@@ -153,7 +151,7 @@ class PromptAssembler:
         self._cached_system_prompt = "\n\n".join(parts)
         return self._cached_system_prompt
 
-    def build_variable_content(self) -> str | None:
+    def build_variable_content(self, tts_enabled: bool = False) -> str | None:
         """组装本轮可变/动态内容（作为 user 消息注入，不污染 system KV cache）
 
         统一管理所有每轮可能变化的信息，避免分散在 loop.py 中手动拼 user 消息。
@@ -162,6 +160,7 @@ class PromptAssembler:
         - 时间信息
         - 工具优先指令（每轮注入，提高 LLM 注意力权重）
         - 记忆初始化提示（首次对话检查 MEMORY.md 是否已建立）
+        - TTS 开关状态提醒
         - 记忆整理提醒（纯轮次触发）
         """
         parts: list[str] = []
@@ -193,6 +192,16 @@ class PromptAssembler:
                     "首次对话，长期记忆尚未建立。"
                     "对话中主动使用 memory 工具记录重要信息。"
                 )
+
+        # 🎤 TTS 开关状态提醒（简短，详细规则在系统提示的「语音输出格式」中）
+        if tts_enabled:
+            parts.append(
+                "TTS 已开启——请用 `<speak tone=\"语气\">...</speak>` 包裹需要朗读的文本。\n"
+                "例：`<speak tone=\"开心\">今天天气真好</speak>` 而不是 `今天天气真好`。\n"
+                "不需要朗读的部分（代码、链接、表情标签、纯数据）不要放 speak 内。"
+            )
+        else:
+            parts.append("TTS 已关闭，请勿使用 `<speak>` 标签。")
 
         # 记忆整理提醒（轮次触发，但 agent 主动用过记忆工具会外部重置）
         self._total_rounds_since_organize += 1

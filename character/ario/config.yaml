@@ -6,8 +6,7 @@ skills:
 speak_weight: 1.0
 speak_weight_label: normal
 tts:
-  mode: preset
+  mode: voice_design
+  voice_design_prompt: 20岁理性温柔的大小姐，声线甜美。
   voice: 冰糖
   tone: 自然温和
-  voice_clone_style_desc: ''
-  voice_clone_sample: voice_sample.wav

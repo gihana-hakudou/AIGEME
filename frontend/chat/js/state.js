@@ -531,17 +531,31 @@ const AIGEME = {
 
         // 通过 WebSocket 发送（服务端内存系统管理 Ms[]/tool/say 的拼接）
         if (this.shared.ws && this.shared.connected) {
+            // TTS 设置：从 localStorage 按角色读取（不依赖 DOM，避免角色切换不同步）
+            var charId = this.chat.currentChar ? this.chat.currentChar.id : 'ario';
+            var ttsConfigStr = localStorage.getItem('tts_config_' + charId);
+            var ttsConfig = {};
+            if (ttsConfigStr) {
+                try { ttsConfig = JSON.parse(ttsConfigStr); } catch (e) {}
+            }
+            var ttsMode = ttsConfig.mode || document.getElementById('tts-mode')?.value || 'preset';
+            var ttsVoice = ttsConfig.voice || document.getElementById('tts-voice')?.value || '冰糖';
+            var ttsTone = ttsConfig.tone || document.getElementById('tts-tone')?.value || '自然温和';
+            var ttsDesignPrompt = (ttsMode === 'voice_design' && ttsConfig.voice_design_prompt) ? ttsConfig.voice_design_prompt : '';
+            var ttsCloneStyle = (ttsMode === 'voice_clone' && ttsConfig.voice_clone_style_desc) ? ttsConfig.voice_clone_style_desc : '';
             var messagePayload = {
                 type: 'user_message',
                 content: text,
-                character_id: this.chat.currentChar ? this.chat.currentChar.id : 'ario',
+                character_id: charId,
                 mode: 'single',
                 images: [],
                 stream: document.getElementById('stream-toggle')?.checked ?? true,
                 tts_enabled: AIGEME.shared.settings.ttsEnabled || false,
-                tts_mode: (document.getElementById('tts-mode')?.value) || 'preset',
-                tts_voice: (document.getElementById('tts-voice')?.value) || '冰糖',
-                tts_tone: (document.getElementById('tts-tone')?.value) || '自然温和',
+                tts_mode: ttsMode,
+                tts_voice: ttsVoice,
+                tts_tone: ttsTone,
+                tts_voice_design_prompt: ttsDesignPrompt,
+                tts_voice_clone_style_desc: ttsCloneStyle,
             };
             // 附带待发送的图片
             if (this.chat.pendingImages && this.chat.pendingImages.length > 0) {

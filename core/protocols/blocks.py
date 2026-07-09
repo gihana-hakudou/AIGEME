@@ -59,6 +59,8 @@ class ClientMessage(BaseModel):
     tts_mode: str = Field(default="preset", description="TTS 模式 (preset/voice_design/voice_clone)")
     tts_voice: str = Field(default="冰糖", description="TTS 音色")
     tts_tone: str = Field(default="自然温和", description="TTS 默认语气")
+    tts_voice_design_prompt: str = Field(default="", description="TTS 音色描述（voice_design 模式）")
+    tts_voice_clone_style_desc: str = Field(default="", description="TTS 语音克隆风格描述（voice_clone 模式）")
     confirm_action: str = Field(default="", description="确认操作类型")
     tool_call_id: str = Field(default="", description="工具调用的原始 ID")
     plan_action: str = Field(default="", description="计划审核操作 (approve/reject)")

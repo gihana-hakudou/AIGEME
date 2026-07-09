@@ -49,8 +49,8 @@ class MimoTTSClient:
             TTSResult 包含 WAV 音频数据
         """
         mode = config.get("mode", "preset")
-        voice = config.get("voice", "冰糖")
-        tone_guide = config.get("tone", "")
+        voice = config.get("voice") or "冰糖"
+        tone_guide = config.get("tone") or ""
 
         # voice_design 和 voice_clone 模式：tone 以 (语气) 前缀放在文本开头
         if tone_guide and mode in ("voice_design", "voice_clone"):
@@ -64,8 +64,11 @@ class MimoTTSClient:
                 design_prompt = "自然温和的声音"
             return self._synthesize_voice_design(text, design_prompt)
         elif mode == "voice_clone":
-            sample_base64 = config.get("voice_clone_sample_b64", "")
-            style_desc = config.get("voice_clone_style_desc", "")
+            sample_base64 = config.get("voice_clone_sample_b64") or ""
+            style_desc = config.get("voice_clone_style_desc") or ""
+            if not sample_base64:
+                logger.error(f"[TTS] voice_clone 模式缺少音频样本，降级为 preset voice='{voice}'")
+                return self._synthesize_preset(text, voice, tone_guide)
             return self._synthesize_voice_clone(text, sample_base64, style_desc)
         else:
             return self._synthesize_preset(text, voice, tone_guide)

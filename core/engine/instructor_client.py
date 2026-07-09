@@ -178,6 +178,7 @@ class InstructorClient:
         finish_reason = None
         _tag_depth = 0                 # 标签嵌套深度：0=正常，1=在 <tachie-e> 括号内或表达式名中
         _tag_depth_safe_counter = 0    # 防止状态机死锁
+        _tag_name_buf = ""             # 跨 chunk 跟踪当前标签名（防止 <speak 等标签被 chunk 边界切断）
         MAX_TAG_DEPTH_CHARS = 100      # 安全上限
 
         # 流式 tool_calls 收集（按 index 跟踪跨 chunk 同名工具）
@@ -346,17 +347,27 @@ class InstructorClient:
                 # 状态：_tag_depth == 0 时正常输出，> 0 时在标签内（抑制输出）
                 # 进入 <tachie-e 的 <> 时 depth+1，遇到 > 时 depth+1（进入表达式名区域）
                 # 遇到 </tachie-e 的 < 时 depth+1，> 时 depth-1 回到 0
+                # 非 tachie-e 标签（如 <speak>）自动跳过状态机，文本原样输出
                 speech_buffer = ""
                 for ch in c:
                     if _tag_depth == 0 and ch == '<':
                         _tag_depth = 1          # 进入开标签的 <>
                         _tag_depth_safe_counter = 0
+                        _tag_name_buf = ""
                     elif _tag_depth == 1 and ch == '>':
-                        _tag_depth = 2          # 开标签结束，进入表达式名区域
+                        # 检查标签名：仅 tachie-e 类标签进入深度 2
+                        _tag_name = _tag_name_buf.strip()
+                        if _tag_name.startswith('tachie-e') or _tag_name.startswith('/tachie-e'):
+                            _tag_depth = 2      # 开标签结束，进入表达式名区域
+                        else:
+                            # 非 tachie-e 标签 → 跳过状态机，恢复文本
+                            _tag_depth = 0
+                            speech_buffer += '<' + _tag_name_buf + '>'
                         _tag_depth_safe_counter = 0
                     elif _tag_depth == 1 and ch == '<':
                         _tag_depth = 1          # 连续 <<，仍在内
                         _tag_depth_safe_counter = 0
+                        _tag_name_buf = ""
                     elif _tag_depth == 2 and ch == '<':
                         _tag_depth = 3          # 进入闭标签的 <>
                         _tag_depth_safe_counter = 0
@@ -367,6 +378,8 @@ class InstructorClient:
                         _tag_depth = 0          # 闭标签结束，回到正常
                         _tag_depth_safe_counter = 0
                     elif _tag_depth > 0:
+                        if _tag_depth == 1:
+                            _tag_name_buf += ch  # 累计标签名
                         _tag_depth_safe_counter += 1
                         # 安全检测：标签内停留超过上限字符数，强制退出
                         if _tag_depth_safe_counter >= MAX_TAG_DEPTH_CHARS:
@@ -419,8 +432,8 @@ class InstructorClient:
             await send_block(Block(block_type="thinking", delta="", is_final=True))
         if full_content:
             # 最终 speech 剥离所有标签残片（包括流式截断导致的未闭合标签）
-            final_speech = clean_content if expression_found else re.sub(
-                r"<tachie-e>[^>]*>?|</tachie-e>", "", full_content
+            final_speech = re.sub(
+                r"<tachie-e>[^>]*>?|</tachie-e>|<speak[^>]*>|</speak>", "", full_content
             ).strip()
             await send_block(Block(block_type="speech", delta=final_speech, is_final=True))
 
@@ -445,9 +458,9 @@ class InstructorClient:
 
         return RaActResponse(
             reasoning=reasoning_content,
-            say=(clean_content if expression_found else re.sub(
-                r"<tachie-e>[^>]*>?|</tachie-e>", "", full_content
-            ).strip()) or None,
+            say=re.sub(
+                r"<tachie-e>[^>]*>?|</tachie-e>|<speak[^>]*>|</speak>", "", full_content
+            ).strip() or None,
             tool_calls=tool_defs,
         )
 

@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -394,6 +395,8 @@ class RaActLoop:
         tts_mode: str = "preset",
         tts_voice: str = "冰糖",
         tts_tone: str = "自然温和",
+        tts_voice_design_prompt: str = "",
+        tts_voice_clone_style_desc: str = "",
     ) -> tuple[list[Any], str, str]:
         """
         RaAct 主循环。
@@ -446,7 +449,7 @@ class RaActLoop:
 
         # 追加用户消息（支持多模态 content array）
         # 在用户消息前注入可变内容（时间等动态信息），不污染 system KV cache
-        variable_content = self._prompt_assembler.build_variable_content()
+        variable_content = self._prompt_assembler.build_variable_content(tts_enabled=tts_enabled)
         if variable_content:
             messages.append({"role": "user", "content": variable_content})
 
@@ -523,26 +526,27 @@ class RaActLoop:
             _tts_config["mode"] = tts_mode
             _tts_config["voice"] = tts_voice
             _tts_config["tone"] = tts_tone
+            if tts_voice_design_prompt:
+                _tts_config["voice_design_prompt"] = tts_voice_design_prompt
+            if tts_voice_clone_style_desc:
+                _tts_config["voice_clone_style_desc"] = tts_voice_clone_style_desc
             # 前端 tts_enabled 覆盖持久化配置
             tts_active = tts_enabled or _tts_config.get("enabled", False)
             if tts_active and _tts_config.get("api_key"):
                 _tts_parser = SpeakParser()
-                _tts_queue = SpeakQueue(char_id, send_block, _tts_config["api_key"], config=_tts_config)
+                _tts_queue = SpeakQueue(char_id, send_block, _tts_config["api_key"], config=dict(_tts_config))
+                _tts_queue.set_turn_id(uuid.uuid4().hex[:8])
                 logger.info(f"[TTS] 语音已开启，角色={char_id}")
-
-                # 🎤 注入 TTS 格式指导 + 语气提醒（variable content 位置，不污染 system KV cache）
-                from core.tts.prompt_injector import TTSPromptInjector
-                tts_reminder = TTSPromptInjector.build_variable_reminder(_tts_config)
-                if tts_reminder:
-                    messages.append({"role": "user", "content": tts_reminder})
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"[TTS] 初始化失败: {e}", exc_info=True)
 
         # 包装 send_block：TTS 开启时拦截 speech block 喂给 parser
         _original_send_block = send_block
+        _tts_clean_sent = 0  # 已发送到前端的纯净文本长度（跨 chunk 追踪）
 
         async def _tts_send_block(block: Block) -> None:
             """TTS 包装的 send_block"""
+            nonlocal _tts_clean_sent
             # turn_end → 触发 TTS 队列完成
             if _tts_queue and block.block_type == "turn_end":
                 # 如果 parser 还有未闭合的标签，强制关闭
@@ -554,19 +558,23 @@ class RaActLoop:
 
             # speech block → 喂给 parser 解析 speak 标签
             if _tts_parser and _tts_queue and block.block_type == "speech":
-                # 将流式 delta 喂给 parser
+                logger.info(f"[TTS_DEBUG] _tts_send_block 收到 speech block, delta_len={len(block.delta)}, 前50字={block.delta[:50]!r}")
+                # 将流式 delta 喂给 parser（跨 chunk 状态由 parser 内部维护）
                 completed = _tts_parser.feed(block.delta)
+                logger.info(f"[TTS_DEBUG] feed() 返回 {len(completed)} 个 CompletedSpeak")
                 for speak in completed:
                     await _tts_queue.enqueue(speak)
-                # 下发纯净文本（剥离了 speak 标签）给前端
-                clean_delta = SpeakParser.strip_tags(block.delta)
-                if clean_delta:
+                # 使用 parser 累积的纯净文本（正确处理跨 chunk 标签边界）
+                current_clean = _tts_parser.get_clean_text()
+                new_clean = current_clean[_tts_clean_sent:]
+                if new_clean:
                     await _original_send_block(Block(
                         block_type="speech",
-                        delta=clean_delta,
+                        delta=new_clean,
                         is_final=block.is_final,
                         metadata=block.metadata,
                     ))
+                    _tts_clean_sent = len(current_clean)
                 return
 
             # 非 speech block 或 TTS 未开启 → 透传

@@ -2,6 +2,7 @@
 
 import asyncio
 import logging
+import time as _time
 from typing import Callable, Any
 
 from core.protocols.blocks import Block
@@ -108,6 +109,7 @@ class SpeakQueue:
                 logger.info(f"[TTS] 轮次 {self._turn_id} 音频已缓存 ({len(merged)} bytes)")
             except Exception as e:
                 logger.warning(f"[TTS] 合并缓存失败: {e}")
+        self._all_chunks.clear()
 
     # ── 内部 ──
 
@@ -116,7 +118,7 @@ class SpeakQueue:
         try:
             while not self._cancelled:
                 try:
-                    item = await asyncio.wait_for(self._queue.get(), timeout=1.0)
+                    item = await asyncio.wait_for(self._queue.get(), timeout=5.0)
                 except asyncio.TimeoutError:
                     # 队列空了，退出
                     break
@@ -162,9 +164,13 @@ class SpeakQueue:
         self._all_chunks.append(result.audio_data)
 
         # 等待轮到本 index 播放
+        _wait_start = _time.time()
         while self._next_play_index < item.index and not self._cancelled:
             # 暂存已合成的音频
             self._pending[item.index] = result.audio_data
+            if _time.time() - _wait_start > 30.0:
+                logger.warning(f"[TTS] speak[{item.index}] 等待超时 (30s)，强制播放")
+                break
             await asyncio.sleep(0.05)
             continue
 

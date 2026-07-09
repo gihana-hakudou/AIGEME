@@ -558,6 +558,8 @@ class WSServer:
                         tts_mode=msg.tts_mode,
                         tts_voice=msg.tts_voice,
                         tts_tone=msg.tts_tone,
+                        tts_voice_design_prompt=msg.tts_voice_design_prompt,
+                        tts_voice_clone_style_desc=msg.tts_voice_clone_style_desc,
                     )
                 )
                 _diag("_message_loop: raact_stream background task launched")
@@ -573,6 +575,8 @@ class WSServer:
         tts_mode: str = "preset",
         tts_voice: str = "冰糖",
         tts_tone: str = "自然温和",
+        tts_voice_design_prompt: str = "",
+        tts_voice_clone_style_desc: str = "",
     ) -> None:
         """后台运行 raact_stream，完成后持久化结果（不阻塞消息循环）"""
         import logging
@@ -589,6 +593,8 @@ class WSServer:
                 tts_mode=tts_mode,
                 tts_voice=tts_voice,
                 tts_tone=tts_tone,
+                tts_voice_design_prompt=tts_voice_design_prompt,
+                tts_voice_clone_style_desc=tts_voice_clone_style_desc,
             )
             ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 返回: final_say=%s, round_messages=%s, reasoning_count=%s",
                 final_say[:80] if final_say else "None", len(round_messages), len(accumulated_reasoning))
@@ -670,6 +676,12 @@ class WSServer:
                     user_message=next_msg.content,
                     history=session.history,
                     images=None,  # 队列消息不支持图片
+                    tts_enabled=next_msg.tts_enabled,
+                    tts_mode=next_msg.tts_mode,
+                    tts_voice=next_msg.tts_voice,
+                    tts_tone=next_msg.tts_tone,
+                    tts_voice_design_prompt=next_msg.tts_voice_design_prompt,
+                    tts_voice_clone_style_desc=next_msg.tts_voice_clone_style_desc,
                 )
             )
             return  # 不设置 raact_task = None，新的任务接管

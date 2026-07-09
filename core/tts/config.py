@@ -149,8 +149,9 @@ class TTSConfig:
                 data[_CHAR_TTS_KEY] = {}
 
             # 处理语音克隆样本：base64 → 文件
-            sample_data = overrides.pop("voice_clone_sample", None)
-            if sample_data and isinstance(sample_data, str) and sample_data.startswith("data:"):
+            sample_data = overrides.get("voice_clone_sample")
+            is_data_url = isinstance(sample_data, str) and sample_data.startswith("data:")
+            if is_data_url:
                 # 解码 base64 data URL 并保存为文件
                 try:
                     import re
@@ -178,6 +179,9 @@ class TTSConfig:
                         data[_CHAR_TTS_KEY]["voice_clone_sample"] = sample_filename
                 except Exception as e:
                     logger.error(f"[TTS] 保存样本文件失败: {e}")
+                # 从 overrides 移除原始 base64，避免写入 YAML（不影响调用者，get 不修改原 dict）
+                if "voice_clone_sample" in overrides:
+                    del overrides["voice_clone_sample"]
 
             # 只覆盖提供的字段（不删除未提供的）
             for k, v in overrides.items():
