@@ -1166,6 +1166,8 @@
             if (!turnId) return;
             var charId = (AIGEME.chat.currentChar && AIGEME.chat.currentChar.id) || 'ario';
             fetch('/api/tts/cache/' + charId + '/' + turnId).then(function(r) { return r.json(); }).then(function(data) {
+                if (data.status === 'ok' && typeof TTSPlayer !== 'undefined') {
+                    TTSPlayer.playTest(data.audio_data, 0);
                 }
             }).catch(function() {});
         });
