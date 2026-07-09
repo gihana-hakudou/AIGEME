@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import logging
 import os
 import re
 from typing import Any, Callable
@@ -10,6 +11,8 @@ import instructor
 from instructor import AsyncInstructor
 from instructor.function_calls import Mode
 from langchain_core.messages import BaseMessage
+
+logger = logging.getLogger(__name__)
 
 # LiteLLM: 不支持的参数自动丢弃而非抛错
 # 例如 reasoning_effort 对 OpenAI 兼容端点无效时降级为静默忽略
