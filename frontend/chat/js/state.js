@@ -325,7 +325,7 @@ const AIGEME = {
                 chList.insertAdjacentHTML('beforeend', [
                     '<div class="ch-msg ch-msg-assistant" data-turn-id="' + turnId + '" data-tts-turn-id="' + ttsTurnId + '">',
                     '  <div class="ch-msg-name">', AIGEME_UI._escapeHtml(name),
-                    '    <button class="tts-replay-btn" data-turn-id="' + turnId + '" title="重播语音">🔁</button>',
+                    '    <button class="tts-replay-btn" data-turn-id="' + turnId + '" data-tts-turn-id="' + ttsTurnId + '" title="重播语音">🔁</button>',
                     '  </div>',
                     '  <div class="ch-msg-text">', AIGEME_UI._escapeHtml(replaceEmojiTags(this.chat.currentMessage)), '</div>',
                     '</div>'
