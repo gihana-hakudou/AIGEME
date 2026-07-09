@@ -81,7 +81,7 @@ const WSClient = {
     _handleMessage: function(data) {
         if (data.type === 'pong') return;
         if (data.type === 'block') {
-            if (data.block_type === 'speech' && window.soundManager) {
+            if (data.block_type === 'speech' && window.soundManager && !AIGEME.shared.settings.ttsEnabled) {
                 window.soundManager.play('message_receive');
             }
             BlockRenderer.handle(data);

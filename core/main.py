@@ -57,6 +57,7 @@ from core.routes import (
     models_router,
     settings_router,
     frontend_router,
+    tts_router,
 )
 
 # 向后兼容：保持 `from core.main import PROVIDER_DEFAULTS` 等旧导入路径有效
@@ -184,5 +185,6 @@ def create_app() -> FastAPI:
     app.include_router(models_router)
     app.include_router(settings_router)
     app.include_router(frontend_router)
+    app.include_router(tts_router)
 
     return app

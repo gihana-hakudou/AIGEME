@@ -554,6 +554,10 @@ class WSServer:
                         history=session.history,
                         images=image_contents or None,
                         stream=msg.stream,
+                        tts_enabled=msg.tts_enabled,
+                        tts_mode=msg.tts_mode,
+                        tts_voice=msg.tts_voice,
+                        tts_tone=msg.tts_tone,
                     )
                 )
                 _diag("_message_loop: raact_stream background task launched")
@@ -565,6 +569,10 @@ class WSServer:
         history: list[Any],
         images: list[dict] | None = None,
         stream: bool = True,
+        tts_enabled: bool = False,
+        tts_mode: str = "preset",
+        tts_voice: str = "冰糖",
+        tts_tone: str = "自然温和",
     ) -> None:
         """后台运行 raact_stream，完成后持久化结果（不阻塞消息循环）"""
         import logging
@@ -577,6 +585,10 @@ class WSServer:
                 send_block=session.send_block,
                 images=images,
                 stream=stream,
+                tts_enabled=tts_enabled,
+                tts_mode=tts_mode,
+                tts_voice=tts_voice,
+                tts_tone=tts_tone,
             )
             ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 返回: final_say=%s, round_messages=%s, reasoning_count=%s",
                 final_say[:80] if final_say else "None", len(round_messages), len(accumulated_reasoning))

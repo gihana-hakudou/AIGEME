@@ -160,7 +160,7 @@
       </div>
       <div class="chat-options">
         <label class="opt"><input type="checkbox" id="stream-toggle" checked> ✨ 流式输出</label>
-        <label class="opt"><input type="checkbox"> 🔊 语音</label>
+        <label class="opt"><input type="checkbox" id="tts-toggle"> 🔊 语音</label>
         <label class="opt perm-mode-label">
           权限
           <select id="perm-mode-select" class="perm-mode-select">
@@ -222,9 +222,58 @@
       <div class="srow"><label>透明度</label><input type="range" min="0" max="100" value="75"></div>
       <div class="srow"><label>文字速度</label><input type="range" min="5" max="80" value="30" id="setting-speed"></div>
     </div>
-    <div class="sblock">
-      <h3>🗣 语音设置</h3>
-      <div class="srow"><label>引擎</label><select class="sselect"><option>默认</option><option>Edge TTS</option><option>ElevenLabs</option></select></div>
+    <div class="sblock" id="tts-settings-block">
+      <h3>🎤 TTS 语音设置</h3>
+      <div class="srow">
+        <label>角色</label>
+        <select id="tts-char-select" class="sselect"></select>
+      </div>
+      <div class="srow">
+        <label>API Key</label>
+        <input type="password" class="sinput" id="tts-api-key" placeholder="sk-..." style="flex:1;">
+      </div>
+      <div class="srow">
+        <label>语音模式</label>
+        <select id="tts-mode" class="sselect">
+          <option value="preset">预置音色</option>
+          <option value="voice_design">文本设计音色</option>
+          <option value="voice_clone">语音克隆</option>
+        </select>
+      </div>
+      <div class="srow" id="tts-voice-row">
+        <label>音色</label>
+        <select id="tts-voice" class="sselect">
+          <option value="冰糖">冰糖 (中文女声)</option>
+          <option value="茉莉">茉莉 (中文女声)</option>
+          <option value="苏打">苏打 (中文男声)</option>
+          <option value="白桦">白桦 (中文男声)</option>
+          <option value="Mia">Mia (英文女声)</option>
+          <option value="Chloe">Chloe (英文女声)</option>
+          <option value="Milo">Milo (英文男声)</option>
+          <option value="Dean">Dean (英文男声)</option>
+        </select>
+      </div>
+      <div class="srow" id="tts-design-row" style="display:none;">
+        <label>音色描述</label>
+        <textarea id="tts-design-prompt" class="sinput" rows="2" style="flex:1;"
+          placeholder="例：35岁男性，声音低沉醇厚..."></textarea>
+      </div>
+      <div class="srow" id="tts-clone-row" style="display:none;">
+        <label>音频样本</label>
+        <input type="file" id="tts-clone-sample" accept="audio/*" style="flex:1;">
+      </div>
+      <div class="srow" id="tts-clone-style-row" style="display:none;">
+        <label>风格描述</label>
+        <input class="sinput" id="tts-clone-style" placeholder="声音风格描述（可选）" style="flex:1;">
+      </div>
+      <div class="srow">
+        <label>语气指导</label>
+        <input class="sinput" id="tts-tone" placeholder="自然温和" style="flex:1;">
+      </div>
+      <div class="srow" style="justify-content:center;margin-top:0.5rem;">
+        <button id="btn-test-tts" class="cute-btn" style="width:auto;padding:0.4rem 1.5rem;">🔊 测试语音</button>
+        <span id="tts-test-status" style="margin-left:1rem;font-size:0.85rem;color:var(--text-hint);"></span>
+      </div>
     </div>
     <div class="sblock">
       <h3>🤖 模型设置</h3>
@@ -292,6 +341,7 @@
         </button>
       </div>
     </div>
+
   </div>
 </div>
 
@@ -302,6 +352,7 @@
 <script src="/static/effects/shake.js"></script>
 <script src="/static/js/plan-block.js"></script>
 <script src="/static/js/blocks.js"></script>
+<script src="/static/js/tts.js"></script>
 <script src="/static/audio/sound_effects.js"></script>
 <script src="/static/js/app.js"></script>
 </body>

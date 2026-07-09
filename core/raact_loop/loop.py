@@ -16,6 +16,9 @@ from core.engine.models import RaActResponse
 from core.engine.message_validator import validate_inplace as _validate_messages
 from core.protocols.blocks import Block
 from core.raact_loop.stream_router import route_response
+from core.tts.speak_parser import SpeakParser
+from core.tts.speak_queue import SpeakQueue
+from core.tts.config import TTSConfig
 from core.tools.registry import ToolRegistry
 from core.tools.parallel import ParallelExecutor, ToolCallDef
 from core.memory.memory_tracker import MemoryContextTracker
@@ -387,6 +390,10 @@ class RaActLoop:
         send_block: Any,
         images: list[dict] | None = None,
         stream: bool = True,
+        tts_enabled: bool = False,
+        tts_mode: str = "preset",
+        tts_voice: str = "冰糖",
+        tts_tone: str = "自然温和",
     ) -> tuple[list[Any], str, str]:
         """
         RaAct 主循环。
@@ -395,7 +402,8 @@ class RaActLoop:
             user_message: 用户消息文本
             history: LangChain BaseMessage 列表
             send_block: 异步回调，用于推送 Block 到前端
-            images: 图片列表，每项含 {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,..."}}
+            images: 图片列表
+            tts_enabled: 前端 TTS 开关状态（覆盖角色配置）
 
         返回:
             (updated_history, final_say)
@@ -504,6 +512,68 @@ class RaActLoop:
         # 多模态降级重试计数器（跨 round 共享）
         _multimodal_retries = 0
         _tool_choice_retries = 0
+
+        # 🎤 TTS 设置（语音开启时创建解析器和队列）
+        _tts_parser: SpeakParser | None = None
+        _tts_queue: SpeakQueue | None = None
+        try:
+            char_id = self._prompt_assembler._character_dir.name
+            _tts_config = TTSConfig.load(char_id)
+            # 前端设置无条件覆盖持久化配置（热加载）
+            _tts_config["mode"] = tts_mode
+            _tts_config["voice"] = tts_voice
+            _tts_config["tone"] = tts_tone
+            # 前端 tts_enabled 覆盖持久化配置
+            tts_active = tts_enabled or _tts_config.get("enabled", False)
+            if tts_active and _tts_config.get("api_key"):
+                _tts_parser = SpeakParser()
+                _tts_queue = SpeakQueue(char_id, send_block, _tts_config["api_key"], config=_tts_config)
+                logger.info(f"[TTS] 语音已开启，角色={char_id}")
+
+                # 🎤 注入 TTS 格式指导 + 语气提醒（variable content 位置，不污染 system KV cache）
+                from core.tts.prompt_injector import TTSPromptInjector
+                tts_reminder = TTSPromptInjector.build_variable_reminder(_tts_config)
+                if tts_reminder:
+                    messages.append({"role": "user", "content": tts_reminder})
+        except Exception:
+            pass
+
+        # 包装 send_block：TTS 开启时拦截 speech block 喂给 parser
+        _original_send_block = send_block
+
+        async def _tts_send_block(block: Block) -> None:
+            """TTS 包装的 send_block"""
+            # turn_end → 触发 TTS 队列完成
+            if _tts_queue and block.block_type == "turn_end":
+                # 如果 parser 还有未闭合的标签，强制关闭
+                if _tts_parser and _tts_parser.has_open_tag:
+                    remaining = _tts_parser.flush_open_tag()
+                    if remaining:
+                        await _tts_queue.enqueue(remaining)
+                await _tts_queue.finish_turn()
+
+            # speech block → 喂给 parser 解析 speak 标签
+            if _tts_parser and _tts_queue and block.block_type == "speech":
+                # 将流式 delta 喂给 parser
+                completed = _tts_parser.feed(block.delta)
+                for speak in completed:
+                    await _tts_queue.enqueue(speak)
+                # 下发纯净文本（剥离了 speak 标签）给前端
+                clean_delta = SpeakParser.strip_tags(block.delta)
+                if clean_delta:
+                    await _original_send_block(Block(
+                        block_type="speech",
+                        delta=clean_delta,
+                        is_final=block.is_final,
+                        metadata=block.metadata,
+                    ))
+                return
+
+            # 非 speech block 或 TTS 未开启 → 透传
+            await _original_send_block(block)
+
+        # 替换 send_block 引用（后续所有地方改用 _tts_send_block）
+        send_block = _tts_send_block
 
         for round_num in range(1, MAX_RAACT_ROUNDS + 1):
             # [检查点1] round 循环开始前

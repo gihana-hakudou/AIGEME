@@ -48,6 +48,7 @@ const BlockRenderer = {
             'confirm': this._handleConfirm,
             'memory_update': this._handleMemoryUpdate,
             'workspace_update': this._handleWorkspaceUpdate,
+            'audio': this._handleAudio,
         };
         return handlers[blockType] ? handlers[blockType].bind(this) : null;
     },
@@ -375,6 +376,13 @@ const BlockRenderer = {
     /** narration — 旁白 */
     _handleNarration: function(block) {
         AIGEME_UI.renderNarration(block.delta);
+    },
+
+    /** audio — TTS 合成音频 */
+    _handleAudio: function(block) {
+        if (typeof TTSPlayer === 'undefined') return;
+        var index = (block.metadata && block.metadata.index) || 0;
+        TTSPlayer.play(block.delta, index);
     },
 
     /** scene — 场景切换（预留） */

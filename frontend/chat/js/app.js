@@ -710,6 +710,293 @@
             saveSettings();
         });
 
+        // ── TTS 设置 ──
+        var ttsToggle = document.getElementById('tts-toggle');
+        var ttsApiKey = document.getElementById('tts-api-key');
+        var ttsMode = document.getElementById('tts-mode');
+        var ttsVoice = document.getElementById('tts-voice');
+        var ttsDesignPrompt = document.getElementById('tts-design-prompt');
+        var ttsDesignRow = document.getElementById('tts-design-row');
+        var ttsCloneRow = document.getElementById('tts-clone-row');
+        var ttsCloneStyleRow = document.getElementById('tts-clone-style-row');
+        var ttsVoiceRow = document.getElementById('tts-voice-row');
+        var ttsCharSelect = document.getElementById('tts-char-select');
+        // 当前配置中的角色 ID（可能不同于当前聊天角色）
+        var ttsTone = document.getElementById('tts-tone');
+        var btnTestTTS = document.getElementById('btn-test-tts');
+        var ttsTestStatus = document.getElementById('tts-test-status');
+
+        // TTS 开关（localStorage 持久化）
+        if (ttsToggle) {
+            var saved = localStorage.getItem('tts_enabled') === 'true';
+            AIGEME.shared.settings.ttsEnabled = saved;
+            ttsToggle.checked = saved;
+            if (typeof TTSPlayer !== 'undefined') {
+                TTSPlayer.setEnabled(saved);
+            }
+            ttsToggle.addEventListener('change', function() {
+                AIGEME.shared.settings.ttsEnabled = this.checked;
+                localStorage.setItem('tts_enabled', this.checked);
+                if (typeof TTSPlayer !== 'undefined') {
+                    TTSPlayer.setEnabled(this.checked);
+                }
+            });
+        }
+
+        // TTS 自动保存到 localStorage 和本地存储
+        function saveTTSLocally() {
+            var charId = getTTSSelChar();
+            var mode = ttsMode ? ttsMode.value : 'preset';
+            var data = {
+                mode: mode,
+                voice: ttsVoice ? ttsVoice.value : '冰糖',
+                tone: ttsTone ? ttsTone.value : '自然温和',
+            };
+            // 按模式只存相关字段
+            if (mode === 'voice_design') {
+                data.voice_design_prompt = ttsDesignPrompt ? ttsDesignPrompt.value : '';
+            } else if (mode === 'voice_clone') {
+                var styleEl = document.getElementById('tts-clone-style');
+                if (styleEl) data.voice_clone_style_desc = styleEl.value;
+            }
+            localStorage.setItem('tts_config_' + charId, JSON.stringify(data));
+        }
+
+        // TTS 变更时自动保存本地 + 更新 UI
+        function bindTTSSave(el) {
+            if (el) el.addEventListener('change', saveTTSLocally);
+        }
+        bindTTSSave(ttsMode);
+        bindTTSSave(ttsVoice);
+        bindTTSSave(ttsDesignPrompt);
+        bindTTSSave(document.getElementById('tts-clone-style'));
+        bindTTSSave(ttsTone);
+
+        // TTS 模式切换 → 显示/隐藏对应行 + 样本状态
+        function updateTTSModeUI() {
+            var mode = ttsMode ? ttsMode.value : 'preset';
+            if (ttsVoiceRow) ttsVoiceRow.style.display = (mode === 'preset') ? '' : 'none';
+            if (ttsDesignRow) ttsDesignRow.style.display = (mode === 'voice_design') ? '' : 'none';
+            if (ttsCloneRow) ttsCloneRow.style.display = (mode === 'voice_clone') ? '' : 'none';
+            if (ttsCloneStyleRow) ttsCloneStyleRow.style.display = (mode === 'voice_clone') ? '' : 'none';
+
+            // 语音克隆模式下显示已保存样本信息
+            if (mode === 'voice_clone') {
+                var charId = getTTSSelChar();
+                var sampleName = localStorage.getItem('tts_clone_name_' + charId);
+                var statusEl = document.getElementById('tts-clone-status');
+                if (!statusEl) {
+                    var row = document.getElementById('tts-clone-row');
+                    if (row) {
+                        statusEl = document.createElement('span');
+                        statusEl.id = 'tts-clone-status';
+                        statusEl.style.cssText = 'font-size:0.8rem;color:var(--text-hint);margin-left:8px;';
+                        row.querySelector('label')?.after(statusEl);
+                    }
+                }
+                if (statusEl) {
+                    statusEl.textContent = sampleName ? '✅ ' + sampleName : '';
+                }
+            }
+        }
+        if (ttsMode) {
+            ttsMode.addEventListener('change', updateTTSModeUI);
+        }
+
+        // 获取当前 TTS 配置对应的角色 ID
+        function getTTSSelChar() {
+            return ttsCharSelect ? ttsCharSelect.value : (AIGEME.chat.currentChar && AIGEME.chat.currentChar.id) || 'ario';
+        }
+
+        // 填充角色下拉并选中当前角色
+        function populateTTSCharSelect() {
+            if (!ttsCharSelect) return;
+            var chars = AIGEME.chat.characters || [];
+
+            // 如果列表不完整（空或只有1个），调用 API 获取完整列表
+            if (chars.length <= 1) {
+                fetch('/api/characters').then(function(r) { return r.json(); }).then(function(allChars) {
+                    AIGEME.chat.characters = allChars;
+                    renderCharOptions(allChars);
+                }).catch(function() {
+                    renderCharOptions(chars);
+                });
+            } else {
+                renderCharOptions(chars);
+            }
+        }
+
+        function renderCharOptions(chars) {
+            if (!ttsCharSelect) return;
+            var currentId = (AIGEME.chat.currentChar && AIGEME.chat.currentChar.id) || 'ario';
+            ttsCharSelect.innerHTML = '';
+            if (chars.length === 0) {
+                var opt = document.createElement('option');
+                opt.value = currentId;
+                opt.textContent = currentId;
+                ttsCharSelect.appendChild(opt);
+            } else {
+                for (var i = 0; i < chars.length; i++) {
+                    var c = chars[i];
+                    var opt = document.createElement('option');
+                    opt.value = c.id;
+                    opt.textContent = c.name || c.id;
+                    ttsCharSelect.appendChild(opt);
+                }
+            }
+            ttsCharSelect.value = currentId;
+        }
+
+        // 从 localStorage 或后端加载指定角色的 TTS 配置
+        function loadTTSConfig() {
+            var charId = getTTSSelChar();
+            var charName = '';
+            var chars = AIGEME.chat.characters || [];
+            for (var i = 0; i < chars.length; i++) {
+                if (chars[i].id === charId) { charName = chars[i].name || charId; break; }
+            }
+            if (!charName) charName = charId;
+
+            // 标题显示角色名
+            var titleEl = document.querySelector('#tts-settings-block h3');
+            if (titleEl) titleEl.textContent = '🎤 TTS 语音设置 — ' + charName;
+
+            // 优先从 localStorage 加载
+            var local = localStorage.getItem('tts_config_' + charId);
+            if (local) {
+                try {
+                    var data = JSON.parse(local);
+                    if (ttsMode) ttsMode.value = data.mode || 'preset';
+                    if (ttsVoice) ttsVoice.value = data.voice || '冰糖';
+                    if (ttsDesignPrompt) ttsDesignPrompt.value = (data.mode === 'voice_design' && data.voice_design_prompt) ? data.voice_design_prompt : '';
+                    if (ttsTone) ttsTone.value = data.tone || '自然温和';
+                    var cloneStyleEl = document.getElementById('tts-clone-style');
+                    if (cloneStyleEl) cloneStyleEl.value = data.voice_clone_style_desc || '';
+                    var savedKey = localStorage.getItem('tts_api_key_' + charId);
+                    if (ttsApiKey) ttsApiKey.value = savedKey ? '••••••••' : '';
+                    updateTTSModeUI();
+                    return;
+                } catch (e) {}
+            }
+
+            // 从后端加载
+            fetch('/api/tts/config?character=' + charId).then(function(r) { return r.json(); }).then(function(data) {
+                if (ttsApiKey && data.has_api_key) {
+                    ttsApiKey.value = '••••••••';
+                    localStorage.setItem('tts_api_key_' + charId, '1');
+                } else if (ttsApiKey) {
+                    ttsApiKey.value = '';
+                }
+                if (ttsMode) ttsMode.value = data.mode || 'preset';
+                if (ttsVoice) ttsVoice.value = data.voice || '冰糖';
+                if (ttsDesignPrompt) ttsDesignPrompt.value = (data.mode === 'voice_design' && data.voice_design_prompt) ? data.voice_design_prompt : '';
+                if (ttsTone) ttsTone.value = data.tone || '自然温和';
+                var cloneStyleEl2 = document.getElementById('tts-clone-style');
+                if (cloneStyleEl2) cloneStyleEl2.value = data.voice_clone_style_desc || '';
+                updateTTSModeUI();
+                saveTTSLocally();
+            }).catch(function(e) {
+                console.warn('[TTS] 加载配置失败:', e);
+            });
+        }
+
+        // TTS 角色切换 → 重新加载配置
+        if (ttsCharSelect) {
+            ttsCharSelect.addEventListener('change', function() {
+                // 切换角色时把 toggle 也相应切换
+                var charId = getTTSSelChar();
+                var savedToggle = localStorage.getItem('tts_enabled_' + charId);
+                if (savedToggle !== null) {
+                    AIGEME.shared.settings.ttsEnabled = savedToggle === 'true';
+                    if (ttsToggle) ttsToggle.checked = savedToggle === 'true';
+                    if (typeof TTSPlayer !== 'undefined') TTSPlayer.setEnabled(savedToggle === 'true');
+                }
+                loadTTSConfig();
+            });
+        }
+
+        // 测试语音按钮 — 使用下拉选择的角色
+        if (btnTestTTS) {
+            btnTestTTS.addEventListener('click', async function() {
+                if (ttsTestStatus) ttsTestStatus.textContent = '合成中...';
+                var charId = getTTSSelChar();
+                var apiKey = ttsApiKey ? ttsApiKey.value.trim() : '';
+                var mode = ttsMode ? ttsMode.value : 'preset';
+
+                var payload = {
+                    text: '你好，欢迎体验小米智能语音合成。今天天气晴朗，是一个适合外出散步的好日子。',
+                    character: charId,
+                    config: {
+                        mode: mode,
+                        voice: ttsVoice ? ttsVoice.value : '冰糖',
+                        voice_design_prompt: ttsDesignPrompt ? ttsDesignPrompt.value : '',
+                        tone: ttsTone ? ttsTone.value : '自然温和',
+                    },
+                };
+
+                // 语音克隆：优先用已保存的 base64，其次从文件读取
+                if (mode === 'voice_clone') {
+                    var savedB64 = localStorage.getItem('tts_clone_b64_' + charId);
+                    var fileInput = document.getElementById('tts-clone-sample');
+                    if (savedB64) {
+                        payload.config.voice_clone_sample = savedB64;
+                    } else if (fileInput && fileInput.files && fileInput.files.length > 0) {
+                        var file = fileInput.files[0];
+                        var reader = new FileReader();
+                        var b64Promise = new Promise(function(resolve, reject) {
+                            reader.onload = function(e) {
+                                var b64 = e.target.result.split(',')[1];
+                                var mime = file.type || 'audio/wav';
+                                var dataUrl = 'data:' + mime + ';base64,' + b64;
+                                payload.config.voice_clone_sample = dataUrl;
+                                // 保存到 localStorage 供后续使用
+                                localStorage.setItem('tts_clone_b64_' + charId, dataUrl);
+                                localStorage.setItem('tts_clone_name_' + charId, file.name);
+                                resolve();
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(file);
+                        });
+                        await b64Promise;
+                    } else {
+                        if (ttsTestStatus) ttsTestStatus.textContent = '❌ 请选择音频样本';
+                        return;
+                    }
+                }
+                if (apiKey && apiKey.indexOf('••••') === -1) {
+                    payload.api_key = apiKey;
+                }
+                try {
+                    var resp = await fetch('/api/tts/test', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(payload),
+                    });
+                    var data = await resp.json();
+                    if (data.status === 'ok' && typeof TTSPlayer !== 'undefined') {
+                        TTSPlayer.playTest(data.audio_data, 0);
+                        if (ttsTestStatus) ttsTestStatus.textContent = '✅ 播放中';
+                    } else {
+                        if (ttsTestStatus) ttsTestStatus.textContent = '❌ ' + (data.message || '合成失败');
+                    }
+                } catch (e) {
+                    if (ttsTestStatus) ttsTestStatus.textContent = '❌ 请求失败';
+                }
+            });
+        }
+
+        // 在设置面板打开时填充角色列表 + 加载 TTS 配置
+        var screenSettings = document.getElementById('screen-settings');
+        if (screenSettings) {
+            var observer = new MutationObserver(function() {
+                if (screenSettings.classList.contains('active') && typeof TTSPlayer !== 'undefined') {
+                    populateTTSCharSelect();
+                    loadTTSConfig();
+                }
+            });
+            observer.observe(screenSettings, {attributes: true, attributeFilter: ['class']});
+        }
+
         // 上下文窗口 滑块 ↔ 输入框联动 + 自动保存
         if (settingCtxSlider && settingCtxInput) {
             settingCtxSlider.addEventListener('input', function() {
@@ -762,6 +1049,39 @@
                         apiKeyStatus.textContent = '✓ 已配置';
                         apiKeyStatus.className = 'api-key-status ok';
                     }
+                }
+                // 保存 TTS 配置
+                try {
+                    var charId = getTTSSelChar();
+                    var mode = ttsMode ? ttsMode.value : 'preset';
+                    var ttsPayload = {
+                        character: charId,
+                        mode: mode,
+                        voice: ttsVoice ? ttsVoice.value : '冰糖',
+                        tone: ttsTone ? ttsTone.value : '自然温和',
+                    };
+                    // 按模式只发相关字段
+                    if (mode === 'voice_design') {
+                        ttsPayload.voice_design_prompt = ttsDesignPrompt ? ttsDesignPrompt.value : '';
+                    } else if (mode === 'voice_clone') {
+                        var styleEl = document.getElementById('tts-clone-style');
+                        if (styleEl) ttsPayload.voice_clone_style_desc = styleEl.value;
+                        // 带上语音克隆样本 base64，后端会存为文件
+                        var savedB64 = localStorage.getItem('tts_clone_b64_' + charId);
+                        if (savedB64) {
+                            ttsPayload.voice_clone_sample = savedB64;
+                        }
+                    }
+                    if (ttsApiKey && ttsApiKey.value && ttsApiKey.value.indexOf('••••') === -1) {
+                        ttsPayload.api_key = ttsApiKey.value;
+                    }
+                    await fetch('/api/tts/config', {
+                        method: 'PUT',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify(ttsPayload),
+                    });
+                } catch (e) {
+                    console.warn('[TTS] 保存配置失败:', e);
                 }
                 var originalText = btnSave.textContent;
                 btnSave.textContent = '✅ 已保存';
@@ -836,6 +1156,20 @@
             // 初始应用
             updateSpeed();
         }
+
+        // ── TTS 重播按钮 ──
+        document.addEventListener('click', function(e) {
+            var btn = e.target.closest('.tts-replay-btn');
+            if (!btn) return;
+            var turnId = btn.getAttribute('data-turn-id');
+            if (!turnId) return;
+            var charId = (AIGEME.chat.currentChar && AIGEME.chat.currentChar.id) || 'ario';
+            fetch('/api/tts/cache/' + charId + '/' + turnId).then(function(r) { return r.json(); }).then(function(data) {
+                if (data.status === 'ok' && typeof TTSPlayer !== 'undefined') {
+                    TTSPlayer.playTest(data.audio_data, 0);
+                }
+            }).catch(function() {});
+        });
     });
 
     // 窗口resize时重新计算立绘比例

@@ -320,9 +320,12 @@ const AIGEME = {
             var chList = document.getElementById('ch-list');
             if (chList) {
                 var name = this.chat.currentChar ? this.chat.currentChar.name : '';
+                var turnId = this.chat.turnId || 0;
                 chList.insertAdjacentHTML('beforeend', [
-                    '<div class="ch-msg ch-msg-assistant">',
-                    '  <div class="ch-msg-name">', AIGEME_UI._escapeHtml(name), '</div>',
+                    '<div class="ch-msg ch-msg-assistant" data-turn-id="' + turnId + '">',
+                    '  <div class="ch-msg-name">', AIGEME_UI._escapeHtml(name),
+                    '    <button class="tts-replay-btn" data-turn-id="' + turnId + '" title="重播语音">🔁</button>',
+                    '  </div>',
                     '  <div class="ch-msg-text">', AIGEME_UI._escapeHtml(replaceEmojiTags(this.chat.currentMessage)), '</div>',
                     '</div>'
                 ].join(''));
@@ -521,6 +524,11 @@ const AIGEME = {
         this.chat._speechTurnId = this.chat.turnId;
         this._updateStopButton();
 
+        // TTS：中断当前播放
+        if (typeof TTSPlayer !== 'undefined') {
+            TTSPlayer.interrupt(this.chat.turnId);
+        }
+
         // 通过 WebSocket 发送（服务端内存系统管理 Ms[]/tool/say 的拼接）
         if (this.shared.ws && this.shared.connected) {
             var messagePayload = {
@@ -530,6 +538,10 @@ const AIGEME = {
                 mode: 'single',
                 images: [],
                 stream: document.getElementById('stream-toggle')?.checked ?? true,
+                tts_enabled: AIGEME.shared.settings.ttsEnabled || false,
+                tts_mode: (document.getElementById('tts-mode')?.value) || 'preset',
+                tts_voice: (document.getElementById('tts-voice')?.value) || '冰糖',
+                tts_tone: (document.getElementById('tts-tone')?.value) || '自然温和',
             };
             // 附带待发送的图片
             if (this.chat.pendingImages && this.chat.pendingImages.length > 0) {

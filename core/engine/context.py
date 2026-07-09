@@ -227,6 +227,7 @@ class PromptAssembler:
 
         return "\n\n---\n\n".join(parts)
 
+
     def _get_available_expressions(self) -> list[str]:
         """扫描 tachi-e 目录获取可用表情列表"""
         tachi_dir = self._character_dir.parent.parent / "tachi-e"

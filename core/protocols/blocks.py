@@ -27,6 +27,10 @@ BlockType = Literal[
     "plan",           # 完整计划
     "plan_progress",  # 子任务进度更新
     "plan_review",    # 计划审核请求
+    # TTS 相关
+    "audio",          # TTS 合成音频数据
+    "audio_play_end", # 前端通知后端音频播放结束
+    "tts_state",      # TTS 状态同步
 ]
 
 
@@ -51,6 +55,10 @@ class ClientMessage(BaseModel):
     mode: str = Field(default="single", description="对话模式 (single/group)")
     images: list[str] = Field(default_factory=list, description="图片 base64 列表")
     stream: bool = Field(default=True, description="流式开关（false=禁用流式输出）")
+    tts_enabled: bool = Field(default=False, description="TTS 语音开关")
+    tts_mode: str = Field(default="preset", description="TTS 模式 (preset/voice_design/voice_clone)")
+    tts_voice: str = Field(default="冰糖", description="TTS 音色")
+    tts_tone: str = Field(default="自然温和", description="TTS 默认语气")
     confirm_action: str = Field(default="", description="确认操作类型")
     tool_call_id: str = Field(default="", description="工具调用的原始 ID")
     plan_action: str = Field(default="", description="计划审核操作 (approve/reject)")

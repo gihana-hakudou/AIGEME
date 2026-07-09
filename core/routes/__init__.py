@@ -5,6 +5,7 @@ from .conversations import router as conversations_router
 from .models import router as models_router
 from .settings import router as settings_router
 from .frontend import router as frontend_router
+from core.tts.routes import router as tts_router
 
 __all__ = [
     "characters_router",
@@ -12,4 +13,5 @@ __all__ = [
     "models_router",
     "settings_router",
     "frontend_router",
+    "tts_router",
 ]

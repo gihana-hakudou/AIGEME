@@ -960,6 +960,22 @@ html, body {
   color: var(--secondary);
 }
 
+/* TTS 重播按钮 */
+.tts-replay-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  margin-left: 6px;
+  opacity: 0.5;
+  transition: opacity 0.2s;
+  vertical-align: middle;
+  padding: 0;
+}
+.tts-replay-btn:hover {
+  opacity: 1;
+}
+
 .ch-msg-text {
   display: inline-block;
   background: rgba(255, 255, 255, 0.85);
