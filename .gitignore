@@ -75,6 +75,16 @@ venv/
 proj_data.json
 .git-rewrite/
 diag_ws.log
+
+# Python cache
+**/__pycache__/
+
+# Test outputs
+test_outputs/
+*.bak*
+
+# TTS 音频样本缓存
+.AIGEME/.data/
 *_test.png
 mikanani_*.png
 
