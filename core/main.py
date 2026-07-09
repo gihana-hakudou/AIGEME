@@ -153,6 +153,14 @@ def create_app() -> FastAPI:
     from core.tools.browser import register_all as register_browser_tools
     register_browser_tools(registry)
 
+    # 🚀 预启动浏览器 daemon，避免首次使用时加载过慢
+    try:
+        from core.tools.browser.tools import _ensure_browser
+        _ensure_browser()
+        logger.info("Browser daemon pre-launched successfully")
+    except Exception as e:
+        logger.warning(f"Browser daemon pre-launch failed (will retry on first use): {e}")
+
     # 读取 LLM 部署模式
     llm_cfg = cfg.get("llm", {})
     llm_mode = llm_cfg.get("mode", "remote")
