@@ -555,13 +555,21 @@ class RaActLoop:
                     if remaining:
                         await _tts_queue.enqueue(remaining)
                 await _tts_queue.finish_turn()
+                # 在 turn_end 中携带 TTS turn_id 供前端重播按钮使用
+                tts_turn_id = getattr(_tts_queue, '_turn_id', '') or ''
+                if tts_turn_id:
+                    meta = dict(block.metadata)
+                    meta["tts_turn_id"] = tts_turn_id
+                    await _original_send_block(Block(
+                        block_type="turn_end", delta=block.delta,
+                        is_final=block.is_final, metadata=meta,
+                    ))
+                    return
 
             # speech block → 喂给 parser 解析 speak 标签
             if _tts_parser and _tts_queue and block.block_type == "speech":
-                logger.info(f"[TTS_DEBUG] _tts_send_block 收到 speech block, delta_len={len(block.delta)}, 前50字={block.delta[:50]!r}")
                 # 将流式 delta 喂给 parser（跨 chunk 状态由 parser 内部维护）
                 completed = _tts_parser.feed(block.delta)
-                logger.info(f"[TTS_DEBUG] feed() 返回 {len(completed)} 个 CompletedSpeak")
                 for speak in completed:
                     await _tts_queue.enqueue(speak)
                 # 使用 parser 累积的纯净文本（正确处理跨 chunk 标签边界）

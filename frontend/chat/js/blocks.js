@@ -321,6 +321,11 @@ const BlockRenderer = {
             runningCards[i].textContent = '完成';
         }
 
+        // 保存 TTS turn_id（供重播按钮使用）
+        if (block.metadata && block.metadata.tts_turn_id) {
+            AIGEME.chat._lastTtsTurnId = block.metadata.tts_turn_id;
+        }
+
         const cancelled = block.metadata && block.metadata.cancelled;
         AIGEME.chat.isStreaming = false;
         AIGEME.chat.turnEnded = true;

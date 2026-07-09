@@ -1161,12 +1161,11 @@
         document.addEventListener('click', function(e) {
             var btn = e.target.closest('.tts-replay-btn');
             if (!btn) return;
-            var turnId = btn.getAttribute('data-turn-id');
+            // 优先使用 data-tts-turn-id（后端 TTS 缓存的 turn_id），回退到 data-turn-id（UI 轮次号）
+            var turnId = btn.getAttribute('data-tts-turn-id') || btn.getAttribute('data-turn-id');
             if (!turnId) return;
             var charId = (AIGEME.chat.currentChar && AIGEME.chat.currentChar.id) || 'ario';
             fetch('/api/tts/cache/' + charId + '/' + turnId).then(function(r) { return r.json(); }).then(function(data) {
-                if (data.status === 'ok' && typeof TTSPlayer !== 'undefined') {
-                    TTSPlayer.playTest(data.audio_data, 0);
                 }
             }).catch(function() {});
         });

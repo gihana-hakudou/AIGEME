@@ -321,8 +321,9 @@ const AIGEME = {
             if (chList) {
                 var name = this.chat.currentChar ? this.chat.currentChar.name : '';
                 var turnId = this.chat.turnId || 0;
+                var ttsTurnId = this.chat._lastTtsTurnId || '';
                 chList.insertAdjacentHTML('beforeend', [
-                    '<div class="ch-msg ch-msg-assistant" data-turn-id="' + turnId + '">',
+                    '<div class="ch-msg ch-msg-assistant" data-turn-id="' + turnId + '" data-tts-turn-id="' + ttsTurnId + '">',
                     '  <div class="ch-msg-name">', AIGEME_UI._escapeHtml(name),
                     '    <button class="tts-replay-btn" data-turn-id="' + turnId + '" title="重播语音">🔁</button>',
                     '  </div>',
