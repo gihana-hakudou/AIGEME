@@ -465,9 +465,7 @@ class InstructorClient:
 
         return RaActResponse(
             reasoning=reasoning_content,
-            say=re.sub(
-                r"<tachie-e>[^>]*>?|</tachie-e>|<speak[^>]*>|</speak>", "", full_content
-            ).strip() or None,
+            say=full_content.strip() or None,
             tool_calls=tool_defs,
         )
 

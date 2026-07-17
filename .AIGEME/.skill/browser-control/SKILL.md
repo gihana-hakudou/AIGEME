@@ -22,7 +22,8 @@ wait_for_load()
 search_baidu("AI 2024")
 
 # 截图
-capture_screenshot("page.png")
+capture_screenshot()               # 默认保存到 .AIGEME/.data/tmp/browser-control/screenshots/
+capture_screenshot("custom.png")   # 指定文件名（相对路径自动重定向到同一目录）
 
 # 获取页面信息
 info = page_info()
@@ -52,7 +53,7 @@ fill_input("#search", "hello")
 ```bash
 python -m core.tools.browser.cli goto_url https://www.baidu.com
 python -m core.tools.browser.cli wait_for_load
-python -m core.tools.browser.cli capture_screenshot baidu_home.png
+python -m core.tools.browser.cli capture_screenshot
 python -m core.tools.browser.cli search_baidu "AIGEME"
 python -m core.tools.browser.cli wait_for_load
 python -m core.tools.browser.cli page_info
@@ -110,6 +111,6 @@ EOF
 ## 注意事项
 
 1. 所有函数都会自动打开浏览器（如果尚未打开）
-2. 截图默认保存到 `character_data/browser/tmp/` 目录
+2. 截图默认保存到 `.AIGEME/.data/tmp/browser-control/screenshots/` 目录
 3. `script` 模式支持多行 Python 代码，变量会保留
 4. 多个 `browser_execute` 调用共享同一个浏览器会话

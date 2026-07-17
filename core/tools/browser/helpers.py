@@ -32,7 +32,7 @@ INTERNAL_PREFIXES = (
 
 # 项目根目录 = helpers.py 向上 4 级：browser → tools → core → AIGEME
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-SS_DIR = _PROJECT_ROOT / ".AIGEME" / ".data" / "tmp" / "img"
+SS_DIR = _PROJECT_ROOT / ".AIGEME" / ".data" / "tmp" / "browser-control" / "screenshots"
 _DATA_DIR = _PROJECT_ROOT / ".AIGEME" / ".data" / "tmp" / "browser-control"
 DOWNLOAD_DIR = _DATA_DIR / "downloads"
 
@@ -313,6 +313,11 @@ def capture_screenshot(path: str | None = None,
     if path is None:
         ts = time.strftime("%Y%m%d_%H%M%S")
         path = str(SS_DIR / f"browser_ss_{ts}.png")
+    else:
+        # 相对路径 → 强制重定向到 SS_DIR，避免写到 CWD（项目根目录）
+        p = Path(path)
+        if not p.is_absolute():
+            path = str(SS_DIR / p)
 
     raw = base64.b64decode(data)
     

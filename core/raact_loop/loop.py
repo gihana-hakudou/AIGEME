@@ -449,7 +449,7 @@ class RaActLoop:
 
         # 追加用户消息（支持多模态 content array）
         # 在用户消息前注入可变内容（时间等动态信息），不污染 system KV cache
-        variable_content = self._prompt_assembler.build_variable_content(tts_enabled=tts_enabled)
+        variable_content = self._prompt_assembler.build_variable_content()
         if variable_content:
             messages.append({"role": "user", "content": variable_content})
 
@@ -519,6 +519,7 @@ class RaActLoop:
         # 🎤 TTS 设置（语音开启时创建解析器和队列）
         _tts_parser: SpeakParser | None = None
         _tts_queue: SpeakQueue | None = None
+        _tts_turn_id_value: str = ""
         try:
             char_id = self._prompt_assembler._character_dir.name
             _tts_config = TTSConfig.load(char_id)
@@ -557,6 +558,7 @@ class RaActLoop:
                 await _tts_queue.finish_turn()
                 # 在 turn_end 中携带 TTS turn_id 供前端重播按钮使用
                 tts_turn_id = getattr(_tts_queue, '_turn_id', '') or ''
+                _tts_turn_id_value = tts_turn_id
                 if tts_turn_id:
                     meta = dict(block.metadata)
                     meta["tts_turn_id"] = tts_turn_id
@@ -1068,7 +1070,7 @@ class RaActLoop:
             Block(block_type="turn_end", delta="", is_final=True, metadata={"cancelled": cancelled_flag})
         )
 
-        return round_messages, final_say or "", accumulated_reasoning
+        return round_messages, final_say or "", accumulated_reasoning, _tts_turn_id_value
 
     def _build_assistant_message(
         self, response: RaActResponse, has_tool_calls: bool, round_num: int = 1

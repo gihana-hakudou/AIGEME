@@ -10,6 +10,7 @@ import json
 import unittest
 import tempfile
 from pathlib import Path
+from unittest.mock import patch, MagicMock, AsyncMock
 
 # 确保项目在路径中
 sys.path.insert(0, str(Path(__file__).parent.parent))
@@ -184,8 +185,9 @@ class TestTTSConfig(unittest.TestCase):
         config = self.TTSConfig.load("ario")
         self.assertIn("mode", config)
         self.assertIn("voice", config)
-        self.assertIn("tone", config)
+        self.assertIn("enabled", config)
         self.assertEqual(config["voice"], "冰糖")
+        # tone 是测试参数，不保存在默认配置中
         # mode 取决于实际写入的角色配置——可能是用户保存的 voice_clone
 
     def test_get_cache_dir(self):
@@ -668,6 +670,121 @@ class TestConfigSaveNoPop(unittest.TestCase):
         # 不应包含 .pop( 调用
         self.assertNotIn(".pop(", save_body,
                          "save 方法应使用 get() 而非 pop()")
+
+
+# ── Bug: tone 双重前缀修复验证 ──
+
+class TestToneDoublePrefixFix(unittest.TestCase):
+    """验证 voice_design/voice_clone 模式下 tone 不再双重拼接"""
+
+    def setUp(self):
+        from core.tts.client import MimoTTSClient
+        self.client = MimoTTSClient(api_key="test_key")
+        self.config_vd = {
+            "mode": "voice_design",
+            "voice": "冰糖",
+            "tone": "自然温和",
+            "voice_design_prompt": "深夜电台主播",
+        }
+        self.config_vc = {
+            "mode": "voice_clone",
+            "voice": "茉莉",
+            "tone": "自然温和",
+            "voice_clone_sample_b64": "data:audio/wav;base64,AAAA",
+            "voice_clone_style_desc": "温柔",
+        }
+
+    def test_segment_tone_overrides_config_tone_vd(self):
+        """voice_design: segment_tone 非空时，config tone 不拼接"""
+        with patch.object(self.client, "_synthesize_voice_design") as mock_vd:
+            mock_vd.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            self.client.synthesize("你好", self.config_vd, segment_tone="开心")
+            call_args = mock_vd.call_args
+            text_passed = call_args[0][0]
+            self.assertEqual(text_passed, "(开心)你好",
+                             "应只有 segment_tone 前缀，不含 config tone")
+            self.assertNotIn("自然温和", text_passed,
+                             "config tone 不应出现在文本中")
+
+    def test_config_tone_used_when_no_segment_tone_vd(self):
+        """voice_design: segment_tone 为空时，使用 config tone"""
+        with patch.object(self.client, "_synthesize_voice_design") as mock_vd:
+            mock_vd.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            self.client.synthesize("你好", self.config_vd, segment_tone="")
+            text_passed = mock_vd.call_args[0][0]
+            self.assertEqual(text_passed, "(自然温和)你好",
+                             "无 segment_tone 时应用 config tone")
+
+    def test_segment_tone_overrides_config_tone_vc(self):
+        """voice_clone: segment_tone 非空时，config tone 不拼接"""
+        with patch.object(self.client, "_synthesize_voice_clone") as mock_vc:
+            mock_vc.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            self.client.synthesize("你好", self.config_vc, segment_tone="兴奋")
+            text_passed = mock_vc.call_args[0][0]
+            self.assertEqual(text_passed, "(兴奋)你好",
+                             "应只有 segment_tone 前缀")
+            self.assertNotIn("自然温和", text_passed)
+
+    def test_no_double_prefix_vd(self):
+        """voice_design: 不应出现 (自然温和)(开心)你好 双重前缀"""
+        with patch.object(self.client, "_synthesize_voice_design") as mock_vd:
+            mock_vd.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            self.client.synthesize("你好", self.config_vd, segment_tone="开心")
+            text_passed = mock_vd.call_args[0][0]
+            # 不应有两个 ( 前缀
+            self.assertEqual(text_passed.count("("), 1,
+                             "不应有双重 tone 前缀")
+
+    def test_preset_uses_effective_tone(self):
+        """preset: segment_tone 优先作为 user message"""
+        with patch.object(self.client, "_synthesize_preset") as mock_p:
+            mock_p.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            config = {"mode": "preset", "voice": "冰糖", "tone": "自然温和"}
+            self.client.synthesize("你好", config, segment_tone="开心")
+            # _synthesize_preset(text, voice, tone_guide)
+            args = mock_p.call_args[0]
+            self.assertEqual(args[0], "你好", "text 应为纯净文本")
+            self.assertEqual(args[2], "开心", "tone 应为 segment_tone 而非 config tone")
+
+    def test_preset_falls_back_to_config_tone(self):
+        """preset: 无 segment_tone 时用 config tone"""
+        with patch.object(self.client, "_synthesize_preset") as mock_p:
+            mock_p.return_value = MagicMock(audio_data=b"wav", duration_ms=100, format="wav")
+            config = {"mode": "preset", "voice": "冰糖", "tone": "自然温和"}
+            self.client.synthesize("你好", config, segment_tone="")
+            args = mock_p.call_args[0]
+            self.assertEqual(args[2], "自然温和", "无 segment_tone 时应用 config tone")
+
+    def test_speak_queue_passes_segment_tone(self):
+        """SpeakQueue 传 item.speak.text 和 item.speak.tone（非 tts_text）"""
+        from core.tts.speak_queue import SpeakQueue
+        from core.tts.speak_parser import CompletedSpeak
+        from unittest.mock import patch, MagicMock, AsyncMock
+        import asyncio
+
+        async def run():
+            async def mock_send(block):
+                pass
+            q = SpeakQueue("ario", mock_send, api_key="test_key",
+                          config={"mode": "voice_design", "voice": "冰糖",
+                                  "tone": "自然温和",
+                                  "voice_design_prompt": "测试音色"})
+            speak = CompletedSpeak(text="你好呀", tts_text="(开心)你好呀",
+                                   tone="开心", index=0)
+            with patch.object(q._client, "synthesize") as mock_syn:
+                mock_syn.return_value = MagicMock(audio_data=b"wav", format="wav")
+                await q.enqueue(speak)
+                await asyncio.sleep(0.3)
+                # 验证传给 synthesize 的参数
+                call_args = mock_syn.call_args
+                text_arg = call_args[0][0]
+                tone_arg = call_args[0][2] if call_args[0][2:] else call_args[1].get("segment_tone", "")
+                self.assertEqual(text_arg, "你好呀",
+                                 "应传纯文本，不含 tone 前缀")
+                self.assertEqual(tone_arg, "开心",
+                                 "应传 per-segment tone")
+            await q.flush()
+        asyncio.run(run())
 
 
 if __name__ == "__main__":

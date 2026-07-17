@@ -583,7 +583,7 @@ class WSServer:
         ws_logger = logging.getLogger(__name__)
         try:
             ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 开始")
-            round_messages, final_say, accumulated_reasoning = await session.raact_loop.raact_stream(
+            round_messages, final_say, accumulated_reasoning, tts_turn_id = await session.raact_loop.raact_stream(
                 user_message=user_message,
                 history=history,
                 send_block=session.send_block,
@@ -596,8 +596,8 @@ class WSServer:
                 tts_voice_design_prompt=tts_voice_design_prompt,
                 tts_voice_clone_style_desc=tts_voice_clone_style_desc,
             )
-            ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 返回: final_say=%s, round_messages=%s, reasoning_count=%s",
-                final_say[:80] if final_say else "None", len(round_messages), len(accumulated_reasoning))
+            ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 返回: final_say=%s, round_messages=%s, reasoning_count=%s, tts_turn_id=%s",
+                final_say[:80] if final_say else "None", len(round_messages), len(accumulated_reasoning), tts_turn_id)
         except asyncio.CancelledError:
             ws_logger.info("[TOOL_DEBUG_WS] 后台 raact_stream 被取消")
             raise
@@ -644,7 +644,9 @@ class WSServer:
                     if part:
                         kwargs["reasoning"] = part
                     reasoning_idx += 1
-                await session.persistence.save_turn(**kwargs)
+                # TTS turn_id 持久化到 meta（用于刷新后重播按钮恢复）
+                meta_arg = {"tts_turn_id": tts_turn_id} if tts_turn_id else None
+                await session.persistence.save_turn(**kwargs, meta=meta_arg)
             elif isinstance(msg, ToolMessage):
                 await session.persistence.save_turn(
                     role="tool",

@@ -1,7 +1,9 @@
 """Speak 标签队列调度器 — 按 index 严格顺序调度 TTS 合成与播放"""
 
 import asyncio
+import base64
 import logging
+import re
 import time as _time
 from typing import Callable, Any
 
@@ -12,6 +14,15 @@ from core.tts.speak_parser import CompletedSpeak
 from core.tts.audio_merger import merge_wavs, save_turn_audio
 
 logger = logging.getLogger(__name__)
+
+# ── 常量 ──
+
+# 队列等待超时（秒）：队列空时 _process_loop 自动退出
+_QUEUE_TIMEOUT = 5.0
+# 播放等待超时（秒）：已合成的音频等待轮到播放的最长时间
+_PLAY_WAIT_TIMEOUT = 30.0
+# 播放轮询间隔（秒）
+_POLL_INTERVAL = 0.05
 
 
 class SpeakQueue:
@@ -118,7 +129,7 @@ class SpeakQueue:
         try:
             while not self._cancelled:
                 try:
-                    item = await asyncio.wait_for(self._queue.get(), timeout=5.0)
+                    item = await asyncio.wait_for(self._queue.get(), timeout=_QUEUE_TIMEOUT)
                 except asyncio.TimeoutError:
                     # 队列空了，退出
                     break
@@ -152,9 +163,8 @@ class SpeakQueue:
 
         # TTS 合成
         logger.info(f"[TTS] 合成 speak[{item.index}]: {item.speak.text[:30]}...")
-        tts_text = item.speak.tts_text
         result: TTSResult = await asyncio.to_thread(
-            self._client.synthesize, tts_text, self._config
+            self._client.synthesize, item.speak.text, self._config, item.speak.tone
         )
 
         if self._cancelled:
@@ -168,17 +178,16 @@ class SpeakQueue:
         while self._next_play_index < item.index and not self._cancelled:
             # 暂存已合成的音频
             self._pending[item.index] = result.audio_data
-            if _time.time() - _wait_start > 30.0:
-                logger.warning(f"[TTS] speak[{item.index}] 等待超时 (30s)，强制播放")
+            if _time.time() - _wait_start > _PLAY_WAIT_TIMEOUT:
+                logger.warning(f"[TTS] speak[{item.index}] 等待超时 ({_PLAY_WAIT_TIMEOUT}s)，强制播放")
                 break
-            await asyncio.sleep(0.05)
+            await asyncio.sleep(_POLL_INTERVAL)
             continue
 
         if self._cancelled:
             return
 
         # 轮到了，发送 audio block
-        import base64
         audio_b64 = base64.b64encode(result.audio_data).decode("utf-8")
         audio_block = Block(
             block_type="audio",
@@ -196,7 +205,6 @@ class SpeakQueue:
     @staticmethod
     def _is_supported_language(text: str) -> bool:
         """检查文本是否包含不支持的语言（日语假名等）"""
-        import re
         if re.search(r'[\u3040-\u309F\u30A0-\u30FF]', text):  # 平假名+片假名
             return False
         if re.search(r'[\uAC00-\uD7AF]', text):  # 韩语

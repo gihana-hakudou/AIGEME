@@ -100,3 +100,6 @@ downloads/
 
 # Mikan local subscriptions
 .AIGEME/.skill/mikan-rss/scripts/mikan_subscriptions.json
+
+# Mikan downloads tracking
+.AIGEME/.skill/mikan-dl/scripts/downloads.json

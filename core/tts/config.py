@@ -2,6 +2,7 @@
 
 import base64
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,6 @@ _DEFAULT_TTS_CONFIG: dict[str, Any] = {
     "voice_design_prompt": "",
     "voice_clone_sample": None,
     "voice_clone_style_desc": "",
-    "tone": "自然温和",
 }
 
 # 预置音色列表
@@ -39,6 +39,16 @@ PRESET_VOICES: dict[str, str] = {
     "Milo": "Milo (英文男声)",
     "Dean": "Dean (英文男声)",
 }
+
+# MIME → 文件扩展名映射（精确匹配）
+_MIME_TO_EXT: dict[str, str] = {
+    "audio/wav": ".wav",
+    "audio/mpeg": ".mp3",
+    "audio/ogg": ".ogg",
+}
+
+# 语音克隆样本大小上限（10MB base64 数据）
+_MAX_SAMPLE_BASE64_LEN = 14_000_000  # ~10MB raw → ~14MB base64
 
 
 def _get_local_config_path() -> Path:
@@ -154,21 +164,24 @@ class TTSConfig:
             if is_data_url:
                 # 解码 base64 data URL 并保存为文件
                 try:
-                    import re
                     match = re.match(r'data:([^;]+);base64,(.+)', sample_data)
                     if match:
                         mime, b64_data = match.groups()
+
+                        # 安全校验：base64 大小上限
+                        if len(b64_data) > _MAX_SAMPLE_BASE64_LEN:
+                            raise ValueError(
+                                f"语音克隆样本过大 ({len(b64_data)} bytes base64, "
+                                f"上限 {_MAX_SAMPLE_BASE64_LEN})"
+                            )
+
                         sample_bytes = base64.b64decode(b64_data)
 
                         sample_dir = _get_sample_dir(character)
                         sample_dir.mkdir(parents=True, exist_ok=True)
 
-                        # 确定扩展名
-                        ext = ".wav"
-                        if "mp3" in mime:
-                            ext = ".mp3"
-                        elif "ogg" in mime:
-                            ext = ".ogg"
+                        # 精确 MIME 匹配
+                        ext = _MIME_TO_EXT.get(mime, ".wav")
 
                         sample_filename = f"voice_sample{ext}"
                         sample_path = sample_dir / sample_filename
@@ -185,8 +198,8 @@ class TTSConfig:
 
             # 只覆盖提供的字段（不删除未提供的）
             for k, v in overrides.items():
-                if k == "api_key":
-                    continue  # api_key 不走角色配置
+                if k in ("api_key", "tone"):
+                    continue  # api_key + tone 不走角色配置（tone 是测试参数，不持久化）
                 data[_CHAR_TTS_KEY][k] = v
 
             char_path.write_text(yaml.dump(data, allow_unicode=True, sort_keys=False), "utf-8")

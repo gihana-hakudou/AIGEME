@@ -847,7 +847,7 @@
             ttsCharSelect.value = currentId;
         }
 
-        // 从 localStorage 或后端加载指定角色的 TTS 配置
+        // 从后端加载指定角色的 TTS 配置，失败时回退 localStorage
         function loadTTSConfig() {
             var charId = getTTSSelChar();
             var charName = '';
@@ -861,42 +861,51 @@
             var titleEl = document.querySelector('#tts-settings-block h3');
             if (titleEl) titleEl.textContent = '🎤 TTS 语音设置 — ' + charName;
 
-            // 优先从 localStorage 加载
-            var local = localStorage.getItem('tts_config_' + charId);
-            if (local) {
-                try {
-                    var data = JSON.parse(local);
-                    if (ttsMode) ttsMode.value = data.mode || 'preset';
-                    if (ttsVoice) ttsVoice.value = data.voice || '冰糖';
-                    if (ttsDesignPrompt) ttsDesignPrompt.value = (data.mode === 'voice_design' && data.voice_design_prompt) ? data.voice_design_prompt : '';
-                    if (ttsTone) ttsTone.value = data.tone || '自然温和';
-                    var cloneStyleEl = document.getElementById('tts-clone-style');
-                    if (cloneStyleEl) cloneStyleEl.value = data.voice_clone_style_desc || '';
-                    var savedKey = localStorage.getItem('tts_api_key_' + charId);
-                    if (ttsApiKey) ttsApiKey.value = savedKey ? '••••••••' : '';
-                    updateTTSModeUI();
-                    return;
-                } catch (e) {}
+            // 填充 UI 的公共函数
+            function fillTTSData(data) {
+                if (ttsMode) ttsMode.value = data.mode || 'preset';
+                if (ttsVoice) ttsVoice.value = data.voice || '冰糖';
+                if (ttsDesignPrompt) ttsDesignPrompt.value = (data.mode === 'voice_design' && data.voice_design_prompt) ? data.voice_design_prompt : '';
+                if (ttsTone) ttsTone.value = data.tone || '自然温和';
+                var cloneStyleEl = document.getElementById('tts-clone-style');
+                if (cloneStyleEl) cloneStyleEl.value = data.voice_clone_style_desc || '';
+                updateTTSModeUI();
             }
 
-            // 从后端加载
+            // 从后端加载（跨设备时总能拿到最新配置）
             fetch('/api/tts/config?character=' + charId).then(function(r) { return r.json(); }).then(function(data) {
                 if (ttsApiKey && data.has_api_key) {
                     ttsApiKey.value = '••••••••';
                     localStorage.setItem('tts_api_key_' + charId, '1');
                 } else if (ttsApiKey) {
                     ttsApiKey.value = '';
+                    ttsApiKey.placeholder = '当前设备未配置 API Key，请在此输入并保存';
                 }
-                if (ttsMode) ttsMode.value = data.mode || 'preset';
-                if (ttsVoice) ttsVoice.value = data.voice || '冰糖';
-                if (ttsDesignPrompt) ttsDesignPrompt.value = (data.mode === 'voice_design' && data.voice_design_prompt) ? data.voice_design_prompt : '';
-                if (ttsTone) ttsTone.value = data.tone || '自然温和';
-                var cloneStyleEl2 = document.getElementById('tts-clone-style');
-                if (cloneStyleEl2) cloneStyleEl2.value = data.voice_clone_style_desc || '';
-                updateTTSModeUI();
-                saveTTSLocally();
+                fillTTSData(data);
+                // 同步 localStorage 作为缓存（同一设备离线降级用）
+                var cacheData = {
+                    mode: data.mode || 'preset',
+                    voice: data.voice || '冰糖',
+                    tone: data.tone || '自然温和',
+                };
+                if (data.mode === 'voice_design') {
+                    cacheData.voice_design_prompt = data.voice_design_prompt || '';
+                } else if (data.mode === 'voice_clone') {
+                    cacheData.voice_clone_style_desc = data.voice_clone_style_desc || '';
+                }
+                localStorage.setItem('tts_config_' + charId, JSON.stringify(cacheData));
             }).catch(function(e) {
-                console.warn('[TTS] 加载配置失败:', e);
+                console.warn('[TTS] 后端加载失败，回退 localStorage:', e);
+                // 后端不可用时回退到 localStorage 缓存
+                var local = localStorage.getItem('tts_config_' + charId);
+                if (local) {
+                    try {
+                        var data = JSON.parse(local);
+                        fillTTSData(data);
+                        var savedKey = localStorage.getItem('tts_api_key_' + charId);
+                        if (ttsApiKey) ttsApiKey.value = savedKey ? '••••••••' : '';
+                    } catch (e2) {}
+                }
             });
         }
 

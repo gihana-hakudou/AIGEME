@@ -151,7 +151,7 @@ class PromptAssembler:
         self._cached_system_prompt = "\n\n".join(parts)
         return self._cached_system_prompt
 
-    def build_variable_content(self, tts_enabled: bool = False) -> str | None:
+    def build_variable_content(self) -> str | None:
         """组装本轮可变/动态内容（作为 user 消息注入，不污染 system KV cache）
 
         统一管理所有每轮可能变化的信息，避免分散在 loop.py 中手动拼 user 消息。
@@ -160,8 +160,9 @@ class PromptAssembler:
         - 时间信息
         - 工具优先指令（每轮注入，提高 LLM 注意力权重）
         - 记忆初始化提示（首次对话检查 MEMORY.md 是否已建立）
-        - TTS 开关状态提醒
         - 记忆整理提醒（纯轮次触发）
+
+        注意：TTS 格式指导不再在此动态注入，依赖 system prompt 固定规则 + 历史消息带标签的格式感染。
         """
         parts: list[str] = []
 
@@ -192,16 +193,6 @@ class PromptAssembler:
                     "首次对话，长期记忆尚未建立。"
                     "对话中主动使用 memory 工具记录重要信息。"
                 )
-
-        # 🎤 TTS 开关状态提醒（简短，详细规则在系统提示的「语音输出格式」中）
-        if tts_enabled:
-            parts.append(
-                "TTS 已开启——请用 `<speak tone=\"语气\">...</speak>` 包裹需要朗读的文本。\n"
-                "例：`<speak tone=\"开心\">今天天气真好</speak>` 而不是 `今天天气真好`。\n"
-                "不需要朗读的部分（代码、链接、表情标签、纯数据）不要放 speak 内。"
-            )
-        else:
-            parts.append("TTS 已关闭，请勿使用 `<speak>` 标签。")
 
         # 记忆整理提醒（轮次触发，但 agent 主动用过记忆工具会外部重置）
         self._total_rounds_since_organize += 1

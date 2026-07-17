@@ -311,15 +311,21 @@ const AIGEME_UI = {
             if (role === 'user') {
                 this.renderUserMessage(content);
             } else if (role === 'assistant') {
+                var displayContent = stripTtsTags(content);
+                var ttsTurnId = (rec.meta && rec.meta.tts_turn_id) || '';
                 chList.insertAdjacentHTML('beforeend', [
-                    '<div class="ch-msg ch-msg-assistant">',
-                    '  <div class="ch-msg-name">', AIGEME.chat.currentChar ? AIGEME.chat.currentChar.name : '', '</div>',
-                    '  <div class="ch-msg-text">', this._escapeHtml(replaceEmojiTags(content)), '</div>',
+                    '<div class="ch-msg ch-msg-assistant" data-tts-turn-id="' + ttsTurnId + '">',
+                    '  <div class="ch-msg-name">', AIGEME.chat.currentChar ? AIGEME.chat.currentChar.name : '',
+                    (ttsTurnId ? '    <button class="tts-replay-btn" data-tts-turn-id="' + ttsTurnId + '" title="重播语音">🔁</button>' : ''),
+                    '</div>',
+                    '  <div class="ch-msg-text">', this._escapeHtml(replaceEmojiTags(displayContent)), '</div>',
                     '</div>'
                 ].join(''));
+                AIGEME.chat.dialogue.push({ role: role, content: content, tts_turn_id: ttsTurnId });
+            } else {
+                // 非 assistant/user 消息也存储到 dialogue（保持完整性）
+                AIGEME.chat.dialogue.push({ role: role, content: content });
             }
-            // 存储到 dialogue
-            AIGEME.chat.dialogue.push({ role: role, content: content });
         }
     },
 };

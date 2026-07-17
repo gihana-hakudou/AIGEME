@@ -2,9 +2,10 @@
 
 import base64
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
+import httpx
 from openai import OpenAI
 
 from .config import TTSConfig, PRESET_VOICES
@@ -12,6 +13,9 @@ from .config import TTSConfig, PRESET_VOICES
 logger = logging.getLogger(__name__)
 
 MIMO_BASE_URL = "https://api.xiaomimimo.com/v1"
+
+# OpenAI HTTP 客户端超时（秒）
+_TTS_REQUEST_TIMEOUT = httpx.Timeout(30.0, connect=10.0)
 
 
 @dataclass
@@ -27,7 +31,11 @@ class MimoTTSClient:
 
     def __init__(self, api_key: str | None = None):
         self._api_key = (api_key or TTSConfig.get_api_key()).strip()
-        self._client = OpenAI(api_key=self._api_key, base_url=MIMO_BASE_URL)
+        self._client = OpenAI(
+            api_key=self._api_key,
+            base_url=MIMO_BASE_URL,
+            timeout=_TTS_REQUEST_TIMEOUT,
+        )
 
     # ── 音色列表 ──
 
@@ -38,23 +46,29 @@ class MimoTTSClient:
 
     # ── 合成 ──
 
-    def synthesize(self, text: str, config: dict[str, Any]) -> TTSResult:
+    def synthesize(self, text: str, config: dict[str, Any],
+                   segment_tone: str = "") -> TTSResult:
         """根据配置合成语音
 
         Args:
-            text: 待合成文本（可含 (语气) 前缀）
+            text: 待合成文本（纯净文本，不含 tone 前缀）
             config: TTS 配置字典（来自 TTSConfig.load()）
+            segment_tone: 来自 <speak tone="X"> 的 per-segment 语气，
+                          优先于 config 的默认 tone
 
         Returns:
             TTSResult 包含 WAV 音频数据
         """
         mode = config.get("mode", "preset")
         voice = config.get("voice") or "冰糖"
-        tone_guide = config.get("tone") or ""
+        config_tone = config.get("tone") or ""
+
+        # per-segment tone 优先于 config 默认 tone
+        effective_tone = segment_tone or config_tone
 
         # voice_design 和 voice_clone 模式：tone 以 (语气) 前缀放在文本开头
-        if tone_guide and mode in ("voice_design", "voice_clone"):
-            text = f"({tone_guide}){text}"
+        if effective_tone and mode in ("voice_design", "voice_clone"):
+            text = f"({effective_tone}){text}"
 
         # 根据 mode 构建 API 参数
         if mode == "voice_design":
@@ -68,14 +82,15 @@ class MimoTTSClient:
             style_desc = config.get("voice_clone_style_desc") or ""
             if not sample_base64:
                 logger.error(f"[TTS] voice_clone 模式缺少音频样本，降级为 preset voice='{voice}'")
-                return self._synthesize_preset(text, voice, tone_guide)
+                return self._synthesize_preset(text, voice, effective_tone)
             return self._synthesize_voice_clone(text, sample_base64, style_desc)
         else:
-            return self._synthesize_preset(text, voice, tone_guide)
+            return self._synthesize_preset(text, voice, effective_tone)
 
-    def test_synthesize(self, text: str, config: dict[str, Any]) -> TTSResult:
+    def test_synthesize(self, text: str, config: dict[str, Any],
+                        segment_tone: str = "") -> TTSResult:
         """测试合成（与 synthesize 相同，专为测试按钮）"""
-        return self.synthesize(text, config)
+        return self.synthesize(text, config, segment_tone)
 
     # ── 内部方法 ──
 
@@ -123,8 +138,17 @@ class MimoTTSClient:
         return self._parse_response(resp)
 
     @staticmethod
-    def _parse_response(resp) -> TTSResult:
+    def _parse_response(resp) -> "TTSResult":
         """解析 API 响应，提取音频数据"""
-        audio_b64 = resp.choices[0].message.audio.data
-        audio_bytes = base64.b64decode(audio_b64)
-        return TTSResult(audio_data=audio_bytes, format="wav")
+        try:
+            choice = resp.choices[0]
+            if not choice.message or not choice.message.audio:
+                raise ValueError("API 响应缺少 audio 字段")
+            audio_b64 = choice.message.audio.data
+            if not audio_b64:
+                raise ValueError("API 返回空音频数据")
+            audio_bytes = base64.b64decode(audio_b64)
+            return TTSResult(audio_data=audio_bytes, format="wav")
+        except (AttributeError, IndexError, KeyError, ValueError, TypeError) as e:
+            logger.error(f"[TTS] 解析 API 响应失败: {e}", exc_info=True)
+            raise ValueError(f"TTS API 响应解析失败: {e}") from e

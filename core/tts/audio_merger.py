@@ -3,6 +3,7 @@
 import io
 import logging
 import struct
+import time
 from pathlib import Path
 from typing import Sequence
 
@@ -167,7 +168,6 @@ def merge_wavs(wav_chunks: Sequence[bytes], crossfade_ms: int = CROSSFADE_MS) ->
 def save_turn_audio(character: str, turn_id: str, merged_wav: bytes,
                     cache_dir: Path) -> Path:
     """将合并后的 WAV 保存到角色缓存目录"""
-    import time
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     filename = f"{timestamp}_{turn_id}.wav"
     filepath = cache_dir / filename

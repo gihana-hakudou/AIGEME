@@ -7,6 +7,6 @@ speak_weight: 1.0
 speak_weight_label: normal
 tts:
   mode: voice_design
-  voice_design_prompt: 20岁理性温柔的大小姐，声线甜美。
+  voice_design_prompt: 18岁理性温柔大小姐，声线甜美且妩媚。
   voice: 冰糖
-  tone: 自然温和
+  tone: 急促喘气

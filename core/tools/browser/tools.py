@@ -79,8 +79,8 @@ class BrowserExecuteTool(BaseTool):
         import base64
         import time
         from pathlib import Path
-        # 截图存到 .AIGEME/.data/tmp/img/ 目录（供 OCR 降级和多模态注入）
-        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "img"
+        # 截图存到 .AIGEME/.data/tmp/browser-control/screenshots/ 目录
+        _ss_dir = Path(__file__).resolve().parent.parent.parent.parent / ".AIGEME" / ".data" / "tmp" / "browser-control" / "screenshots"
         _ss_dir.mkdir(parents=True, exist_ok=True)
         _taken_screenshots: list[str] = []
 
@@ -94,6 +94,11 @@ class BrowserExecuteTool(BaseTool):
         def _tracked_ss(path=None, full=False, max_dim=1280):
             if path is None:
                 path = str(_ss_dir / f"browser_ss_{time.strftime('%Y%m%d_%H%M%S')}.png")
+            else:
+                # 双保险：相对路径强制重定向到 _ss_dir（helpers.capture_screenshot 内部也有同逻辑）
+                p = Path(path)
+                if not p.is_absolute():
+                    path = str(_ss_dir / p)
             result = _orig_ss(path, full=full, max_dim=max_dim)
             # 用 result["path"]（capture_screenshot 返回的绝对路径），避免 path 参数是相对路径
             _taken_screenshots.append(result["path"])

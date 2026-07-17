@@ -96,7 +96,7 @@ class SpeakParser:
                     tone = ""
                     inner_text = ""
 
-                if inner_text:
+                if inner_text.strip():
                     completed = CompletedSpeak(
                         text=inner_text,
                         tts_text=f"({tone}){inner_text}" if tone else inner_text,
@@ -149,7 +149,7 @@ class SpeakParser:
             inner_text = ""
             tone = ""
 
-        if not inner_text:
+        if not inner_text or not inner_text.strip():
             return None
 
         completed = CompletedSpeak(

@@ -322,12 +322,13 @@ const AIGEME = {
                 var name = this.chat.currentChar ? this.chat.currentChar.name : '';
                 var turnId = this.chat.turnId || 0;
                 var ttsTurnId = this.chat._lastTtsTurnId || '';
+                var displayText = stripTtsTags(this.chat.currentMessage);
                 chList.insertAdjacentHTML('beforeend', [
                     '<div class="ch-msg ch-msg-assistant" data-turn-id="' + turnId + '" data-tts-turn-id="' + ttsTurnId + '">',
                     '  <div class="ch-msg-name">', AIGEME_UI._escapeHtml(name),
                     '    <button class="tts-replay-btn" data-turn-id="' + turnId + '" data-tts-turn-id="' + ttsTurnId + '" title="重播语音">🔁</button>',
                     '  </div>',
-                    '  <div class="ch-msg-text">', AIGEME_UI._escapeHtml(replaceEmojiTags(this.chat.currentMessage)), '</div>',
+                    '  <div class="ch-msg-text">', AIGEME_UI._escapeHtml(replaceEmojiTags(displayText)), '</div>',
                     '</div>'
                 ].join(''));
                 chList.scrollTop = chList.scrollHeight;
@@ -740,4 +741,9 @@ function replaceEmojiTags(text) {
         const bracketKey = '[' + key + ']';
         return EMOJI_MAP[bracketKey] || match;
     });
+}
+
+/** 剥离 TTS `<speak>` 标签（前端显示用） */
+function stripTtsTags(text) {
+    return text.replace(/<speak[^>]*>/g, '').replace(/<\/speak>/g, '');
 }
